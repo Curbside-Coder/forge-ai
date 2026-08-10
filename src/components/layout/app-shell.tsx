@@ -8,6 +8,7 @@ import {
   ScrollText,
   LayoutDashboard,
   ListTodo,
+  LogOut,
   Search,
   Settings,
   X,
@@ -31,6 +32,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const { projects, workItems, meetings } = useWorkspace()
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
+  const [isAccountOpen, setIsAccountOpen] = useState(false)
   const [now] = useState(() => Date.now())
   const [query, setQuery] = useState('')
   const results = useMemo(() => {
@@ -157,17 +159,49 @@ export function AppShell({ children }: PropsWithChildren) {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => void signOut()}
-              title={user?.email ?? 'Sign out'}
-              className="grid size-8 place-items-center rounded-full bg-zinc-800 text-xs font-semibold text-zinc-300"
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Profile" className="size-8 rounded-full object-cover" />
-              ) : (
-                displayName.slice(0, 2).toUpperCase()
+            <div className="relative">
+              <button
+                onClick={() => setIsAccountOpen((value) => !value)}
+                aria-expanded={isAccountOpen}
+                aria-label="Open account menu"
+                className="grid size-8 place-items-center rounded-full bg-zinc-800 text-xs font-semibold text-zinc-300 ring-1 ring-white/[0.08] transition hover:ring-white/25"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile" className="size-8 rounded-full object-cover" />
+                ) : (
+                  displayName.slice(0, 2).toUpperCase()
+                )}
+              </button>
+              {isAccountOpen && (
+                <div className="absolute right-0 top-10 z-30 w-64 rounded-xl bg-[#19191d] p-2 shadow-2xl ring-1 ring-white/[0.08]">
+                  <div className="px-3 py-2">
+                    <p className="truncate text-sm font-medium text-zinc-200">{displayName}</p>
+                    <p className="mt-1 truncate text-xs text-zinc-500">{user?.email}</p>
+                  </div>
+                  <Link
+                    to="/settings"
+                    onClick={() => setIsAccountOpen(false)}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                  >
+                    <Settings className="size-4" /> Account settings
+                  </Link>
+                  <div className="my-2 border-t border-white/[0.07]" />
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Sign out of Forge? You will need a new email sign-in link to return.',
+                        )
+                      )
+                        void signOut()
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-400/10"
+                  >
+                    <LogOut className="size-4" /> Sign out
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-5 py-10 lg:px-10 lg:py-14">{children}</main>
