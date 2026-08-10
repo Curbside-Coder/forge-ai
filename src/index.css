@@ -17,3 +17,12 @@ body {
 button {
   font: inherit;
 }
+
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background: #18181b;
+  color: #f4f4f5;
+}

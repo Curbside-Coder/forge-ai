@@ -16,4 +16,4 @@ npm install
 npm run dev
 ```
 
-Run `npm run build` before committing. Supabase is intentionally not configured until project credentials and data design are approved.
+Run `npm run build` before committing. For local Supabase authentication and persistence setup, see `docs/DATABASE.md` and `docs/AUTH.md`.

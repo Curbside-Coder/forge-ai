@@ -1,13 +1,22 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
 import { AppShell } from '@/components/layout/app-shell'
+import { AuthGate } from '@/features/auth/auth-gate'
 import { DashboardPage } from '@/features/dashboard/dashboard-page'
-import { PlaceholderPage } from '@/features/shared/placeholder-page'
+import { MeetingsPage } from '@/features/meetings/meetings-page'
+import { CalendarPage } from '@/features/calendar/calendar-page'
+import { LogsPage } from '@/features/logs/logs-page'
+import { InboxPage } from '@/features/inbox/inbox-page'
+import { ProjectsPage } from '@/features/projects/projects-page'
+import { SettingsPage } from '@/features/settings/settings-page'
+import { WorkItemsPage } from '@/features/work-items/work-items-page'
 
 const rootRoute = createRootRoute({
   component: () => (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <AuthGate>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </AuthGate>
   ),
 })
 
@@ -19,27 +28,37 @@ const dashboardRoute = createRoute({
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
-  component: () => <PlaceholderPage title="Projects" />,
+  component: ProjectsPage,
 })
 const workItemsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/work-items',
-  component: () => <PlaceholderPage title="Work items" />,
+  component: WorkItemsPage,
 })
 const meetingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/meetings',
-  component: () => <PlaceholderPage title="Meetings" />,
+  component: MeetingsPage,
+})
+const calendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/calendar',
+  component: CalendarPage,
+})
+const logsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/logs',
+  component: LogsPage,
 })
 const inboxRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/inbox',
-  component: () => <PlaceholderPage title="Inbox" />,
+  component: InboxPage,
 })
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
-  component: () => <PlaceholderPage title="Settings" />,
+  component: SettingsPage,
 })
 
 const routeTree = rootRoute.addChildren([
@@ -47,6 +66,8 @@ const routeTree = rootRoute.addChildren([
   projectsRoute,
   workItemsRoute,
   meetingsRoute,
+  calendarRoute,
+  logsRoute,
   inboxRoute,
   settingsRoute,
 ])
