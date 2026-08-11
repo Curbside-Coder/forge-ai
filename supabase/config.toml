@@ -1,0 +1,2 @@
+[functions.autopilot-plan]
+verify_jwt = true

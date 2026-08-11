@@ -12,6 +12,9 @@ type AutopilotContextValue = AutopilotState & {
     input: Pick<FocusSession, 'title' | 'plannedMinutes' | 'specStepId' | 'workItemId'>,
   ) => Promise<void>
   completeFocus: (id: string) => Promise<void>
+  askAi: (
+    workItems: WorkItem[],
+  ) => Promise<{ workItemId: string; title: string; reason: string; minutes: number } | null>
 }
 
 const storageKey = 'forge.autopilot.v1'
@@ -280,8 +283,25 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       ),
     }))
   }
+  const askAi: AutopilotContextValue['askAi'] = async (workItems) => {
+    if (!supabase || !user) {
+      setError('Connect Supabase and sign in to use Forge AI.')
+      return null
+    }
+    const { data: response, error: functionError } = await supabase.functions.invoke(
+      'autopilot-plan',
+      { body: { workItems } },
+    )
+    if (functionError || response?.error || !response?.direction) {
+      setError(response?.error ?? functionError?.message ?? 'Forge AI could not plan right now.')
+      return null
+    }
+    return response.direction
+  }
   return (
-    <Context.Provider value={{ ...data, source, error, createPlan, startFocus, completeFocus }}>
+    <Context.Provider
+      value={{ ...data, source, error, createPlan, startFocus, completeFocus, askAi }}
+    >
       {children}
     </Context.Provider>
   )

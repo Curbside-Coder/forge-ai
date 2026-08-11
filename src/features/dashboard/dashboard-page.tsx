@@ -9,12 +9,29 @@ import type { WorkItem } from '@/types/workspace'
 export function DashboardPage() {
   const { user } = useAuth()
   const { workItems } = useWorkspace()
-  const { steps, createPlan, startFocus } = useAutopilot()
+  const { steps, createPlan, startFocus, askAi, error } = useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
+  const [aiDirection, setAiDirection] = useState<{
+    workItemId: string
+    title: string
+    reason: string
+    minutes: number
+  } | null>(null)
+  const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
   const activeStep = steps.find((step) => step.status === 'in_progress')
   const nextSpecStep = steps.find((step) => step.status === 'todo')
   const direction = useMemo(() => {
+    if (aiDirection) {
+      const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
+      if (item)
+        return {
+          title: aiDirection.title,
+          detail: aiDirection.reason,
+          minutes: aiDirection.minutes,
+          item,
+        }
+    }
     if (activeStep)
       return {
         title: activeStep.title,
@@ -40,7 +57,7 @@ export function DashboardPage() {
           item: candidate,
         }
       : null
-  }, [activeStep, nextSpecStep, now, workItems])
+  }, [activeStep, aiDirection, nextSpecStep, now, workItems])
   const name =
     (user?.user_metadata.display_name as string | undefined) ??
     user?.email?.split('@')[0] ??
@@ -64,6 +81,15 @@ export function DashboardPage() {
       workItemId: direction.item?.id ?? null,
     })
     setMessage(`Focus block started for ${direction.minutes} minutes.`)
+  }
+  const improveWithAi = async () => {
+    setIsAskingAi(true)
+    const result = await askAi(workItems.filter((item) => item.status !== 'done'))
+    if (result) {
+      setAiDirection(result)
+      setMessage('Forge AI reviewed your open work and selected one direction.')
+    }
+    setIsAskingAi(false)
   }
   return (
     <section className="mx-auto max-w-3xl">
@@ -101,6 +127,13 @@ export function DashboardPage() {
                   Turn this into a plan
                 </button>
               )}
+              <button
+                onClick={() => void improveWithAi()}
+                disabled={isAskingAi}
+                className="rounded-xl bg-white/[0.05] px-4 py-2.5 text-sm text-zinc-300 hover:bg-white/[0.1] disabled:opacity-50"
+              >
+                {isAskingAi ? 'Planning…' : 'Ask Forge AI'}
+              </button>
             </div>
           </>
         ) : (
@@ -116,6 +149,9 @@ export function DashboardPage() {
         <p className="mt-4 rounded-xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
           {message}
         </p>
+      )}
+      {error && (
+        <p className="mt-4 rounded-xl bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</p>
       )}
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <section className="rounded-2xl bg-white/[0.035] p-6">
