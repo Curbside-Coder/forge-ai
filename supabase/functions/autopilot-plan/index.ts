@@ -44,16 +44,14 @@ Deno.serve(async (request) => {
     } catch {
       return respond({ error: 'Invalid request body.' }, 400)
     }
-    const workItems = (body.workItems ?? [])
-      .slice(0, 40)
-      .map((item) => ({
-        id: item.id,
-        title: item.title.slice(0, 180),
-        description: item.description.slice(0, 1000),
-        priority: item.priority,
-        status: item.status,
-        updatedAt: item.updatedAt,
-      }))
+    const workItems = (body.workItems ?? []).slice(0, 40).map((item) => ({
+      id: item.id,
+      title: item.title.slice(0, 180),
+      description: item.description.slice(0, 1000),
+      priority: item.priority,
+      status: item.status,
+      updatedAt: item.updatedAt,
+    }))
     if (workItems.length === 0)
       return respond({ direction: null, reason: 'There is no open work to plan yet.' })
     const prompt = `You are Forge Autopilot, a calm executive assistant for one developer. Choose exactly one next direction from the work items below. Do not invent projects, deadlines, commitments, or extra steps. Prefer finishing in-progress or critical work, but use judgment. Return JSON only with: workItemId, title, reason, minutes. minutes must be 15, 25, or 45. reason must be one direct sentence under 160 characters.\n\nWork items:\n${JSON.stringify(workItems)}`
