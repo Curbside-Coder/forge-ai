@@ -123,6 +123,13 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       mounted = false
     }
   }, [mode, user])
+
+  useEffect(() => {
+    if (!supabase || !user) return
+    void supabase
+      .from('forge_rhythm_preferences')
+      .upsert({ owner_id: user.id }, { onConflict: 'owner_id', ignoreDuplicates: true })
+  }, [user])
   const createPlan: AutopilotContextValue['createPlan'] = async (item, minutes) => {
     const timestamp = new Date().toISOString()
     const plan: Spec = {
