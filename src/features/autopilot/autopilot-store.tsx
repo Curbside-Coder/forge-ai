@@ -293,7 +293,14 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       { body: { workItems } },
     )
     if (functionError || response?.error || !response?.direction) {
-      setError(response?.error ?? functionError?.message ?? 'Forge AI could not plan right now.')
+      let detail = response?.error ?? functionError?.message ?? 'Forge AI could not plan right now.'
+      const context =
+        functionError && 'context' in functionError ? (functionError.context as unknown) : null
+      if (context instanceof Response) {
+        const body = (await context.json().catch(() => null)) as { error?: string } | null
+        detail = body?.error ?? detail
+      }
+      setError(detail)
       return null
     }
     return response.direction
