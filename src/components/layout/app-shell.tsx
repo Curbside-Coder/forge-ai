@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   Bell,
+  ChartNoAxesCombined,
   CalendarDays,
   FolderKanban,
   Inbox,
@@ -25,6 +26,7 @@ const navigation = [
   { to: '/meetings', label: 'Meetings', icon: CalendarDays },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/reports', label: 'Reports', icon: ChartNoAxesCombined },
 ] as const
 
 export function AppShell({ children }: PropsWithChildren) {

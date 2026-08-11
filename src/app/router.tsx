@@ -9,6 +9,7 @@ import { InboxPage } from '@/features/inbox/inbox-page'
 import { ProjectsPage } from '@/features/projects/projects-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { WorkItemsPage } from '@/features/work-items/work-items-page'
+import { ReportsPage } from '@/features/reports/reports-page'
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -60,6 +61,11 @@ const settingsRoute = createRoute({
   path: '/settings',
   component: SettingsPage,
 })
+const reportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports',
+  component: ReportsPage,
+})
 
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
@@ -70,6 +76,7 @@ const routeTree = rootRoute.addChildren([
   logsRoute,
   inboxRoute,
   settingsRoute,
+  reportsRoute,
 ])
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' })
