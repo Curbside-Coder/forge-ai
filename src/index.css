@@ -14,6 +14,14 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+#root {
+  overflow-x: hidden;
+}
+
+#root :where(p, h1, h2, h3, h4, h5, h6, a, button, span, label, li, td, th) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 button {
   font: inherit;
 }
