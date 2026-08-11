@@ -16,16 +16,6 @@ export function DashboardPage() {
   const activeStep = steps.find((step) => step.status === 'in_progress')
   const nextSpecStep = steps.find((step) => step.status === 'todo')
   const direction = useMemo(() => {
-    if (aiDirection) {
-      const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
-      if (item)
-        return {
-          title: aiDirection.title,
-          detail: aiDirection.reason,
-          minutes: aiDirection.minutes,
-          item,
-        }
-    }
     if (activeStep)
       return {
         title: activeStep.title,
@@ -40,6 +30,16 @@ export function DashboardPage() {
         minutes: nextSpecStep.estimateMinutes,
         step: nextSpecStep,
       }
+    if (aiDirection) {
+      const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
+      if (item)
+        return {
+          title: aiDirection.title,
+          detail: aiDirection.reason,
+          minutes: aiDirection.minutes,
+          item,
+        }
+    }
     const candidate = [...workItems]
       .filter((item) => item.status !== 'done')
       .sort((a, b) => score(b, now.getTime()) - score(a, now.getTime()))[0]
@@ -64,7 +64,7 @@ export function DashboardPage() {
     if (!direction?.item) return
     const spec = await createPlan(direction.item, direction.minutes)
     if (!spec) return
-    setMessage('Autopilot created one focused plan. Nothing extra was added.')
+    setMessage(`Plan ready: “${spec.title}” now has one next action queued below.`)
   }
   const start = async () => {
     if (!direction) return
