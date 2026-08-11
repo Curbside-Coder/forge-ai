@@ -17,6 +17,7 @@ type Action = {
   projectId?: string
   projectName?: string
 }
+type Usage = { inputTokens: number; outputTokens: number; totalTokens: number }
 
 export function ForgeChat() {
   const { user } = useAuth()
@@ -27,6 +28,7 @@ export function ForgeChat() {
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [usage, setUsage] = useState<Usage | null>(null)
   const ask = async () => {
     if (!message.trim() || !supabase) return
     setLoading(true)
@@ -46,6 +48,7 @@ export function ForgeChat() {
     }
     setReply(data.message)
     setActions((data.actions ?? []) as Action[])
+    setUsage(data.usage as Usage | null)
   }
   const apply = async () => {
     if (!supabase || !user || actions.length === 0) return
@@ -167,6 +170,13 @@ export function ForgeChat() {
                     : `Save ${actions.length} action${actions.length === 1 ? '' : 's'}`}
                 </button>
               </div>
+            )}
+            {usage && (
+              <p className="pt-1 text-[10px] text-zinc-500/60">
+                This request · {usage.inputTokens.toLocaleString()} in ·{' '}
+                {usage.outputTokens.toLocaleString()} out · {usage.totalTokens.toLocaleString()}{' '}
+                tokens
+              </p>
             )}
           </div>
           <div className="flex gap-2 border-t border-white/[0.07] p-3">

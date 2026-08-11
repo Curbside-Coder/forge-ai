@@ -66,6 +66,11 @@ Create actions only when explicitly requested. For event requests, use ISO 8601 
     return respond({
       message: parsed.message?.slice(0, 800) ?? 'I could not interpret that request.',
       actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 8) : [],
+      usage: {
+        inputTokens: Number(result.usage?.input_tokens ?? 0),
+        outputTokens: Number(result.usage?.output_tokens ?? 0),
+        totalTokens: Number(result.usage?.total_tokens ?? 0),
+      },
     })
   } catch (error) {
     console.error('Forge command failed', error)
