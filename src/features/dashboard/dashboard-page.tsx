@@ -17,8 +17,14 @@ export function DashboardPage() {
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
-  const activeStep = steps.find((step) => step.status === 'in_progress')
-  const nextSpecStep = steps.find((step) => step.status === 'todo')
+  const isOpenStep = (workItemId: string | null) => {
+    if (!workItemId) return true
+    return workItems.find((item) => item.id === workItemId)?.status !== 'done'
+  }
+  const activeStep = steps.find(
+    (step) => step.status === 'in_progress' && isOpenStep(step.workItemId),
+  )
+  const nextSpecStep = steps.find((step) => step.status === 'todo' && isOpenStep(step.workItemId))
   const direction = useMemo(() => {
     if (activeStep)
       return {
@@ -36,7 +42,7 @@ export function DashboardPage() {
       }
     if (aiDirection) {
       const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
-      if (item)
+      if (item && item.status !== 'done')
         return {
           title: aiDirection.title,
           detail: aiDirection.reason,
