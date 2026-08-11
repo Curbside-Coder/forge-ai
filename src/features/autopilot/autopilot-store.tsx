@@ -1,9 +1,14 @@
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { supabase } from '@/lib/supabase'
-import type { FocusSession, Spec, SpecStep, WorkItem } from '@/types/workspace'
+import type { AiDirection, FocusSession, Spec, SpecStep, WorkItem } from '@/types/workspace'
 
-type AutopilotState = { plans: Spec[]; steps: SpecStep[]; focusSessions: FocusSession[] }
+type AutopilotState = {
+  plans: Spec[]
+  steps: SpecStep[]
+  focusSessions: FocusSession[]
+  aiDirection: AiDirection | null
+}
 type AutopilotContextValue = AutopilotState & {
   source: 'loading' | 'local' | 'supabase'
   error: string | null
@@ -12,13 +17,11 @@ type AutopilotContextValue = AutopilotState & {
     input: Pick<FocusSession, 'title' | 'plannedMinutes' | 'specStepId' | 'workItemId'>,
   ) => Promise<void>
   completeFocus: (id: string) => Promise<void>
-  askAi: (
-    workItems: WorkItem[],
-  ) => Promise<{ workItemId: string; title: string; reason: string; minutes: number } | null>
+  askAi: (workItems: WorkItem[]) => Promise<AiDirection | null>
 }
 
 const storageKey = 'forge.autopilot.v1'
-const empty: AutopilotState = { plans: [], steps: [], focusSessions: [] }
+const empty: AutopilotState = { plans: [], steps: [], focusSessions: [], aiDirection: null }
 const Context = createContext<AutopilotContextValue | null>(null)
 const mapPlan = (row: Record<string, unknown>): Spec => ({
   id: row.id as string,
@@ -59,6 +62,13 @@ const mapFocus = (row: Record<string, unknown>): FocusSession => ({
   completedAt: row.completed_at as string | null,
   interruptionNote: row.interruption_note as string | null,
 })
+const mapDirection = (row: Record<string, unknown>): AiDirection => ({
+  workItemId: row.work_item_id as string,
+  title: row.title as string,
+  reason: row.reason as string,
+  minutes: row.minutes as number,
+  selectedAt: row.selected_at as string,
+})
 function local(): AutopilotState {
   try {
     return {
@@ -91,7 +101,7 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
         return
       }
       if (mode === 'loading' || !user) return
-      const [plans, steps, sessions] = await Promise.all([
+      const [plans, steps, sessions, direction] = await Promise.all([
         supabase
           .from('specs')
           .select('*')
@@ -99,8 +109,9 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
           .order('updated_at', { ascending: false }),
         supabase.from('spec_steps').select('*').order('position'),
         supabase.from('focus_sessions').select('*').order('started_at', { ascending: false }),
+        supabase.from('forge_ai_directions').select('*').maybeSingle(),
       ])
-      const issue = plans.error ?? steps.error ?? sessions.error
+      const issue = plans.error ?? steps.error ?? sessions.error ?? direction.error
       if (issue) {
         if (mounted) {
           setData(local())
@@ -114,6 +125,9 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
           plans: (plans.data as Record<string, unknown>[]).map(mapPlan),
           steps: (steps.data as Record<string, unknown>[]).map(mapStep),
           focusSessions: (sessions.data as Record<string, unknown>[]).map(mapFocus),
+          aiDirection: direction.data
+            ? mapDirection(direction.data as Record<string, unknown>)
+            : null,
         })
         setSource('supabase')
       }
@@ -310,7 +324,36 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       setError(detail)
       return null
     }
-    return response.direction
+    const selected: AiDirection = { ...response.direction, selectedAt: new Date().toISOString() }
+    if (offline()) {
+      save({ ...data, aiDirection: selected })
+      return selected
+    }
+    const { data: saved, error: saveError } = await supabase!
+      .from('forge_ai_directions')
+      .upsert(
+        {
+          owner_id: user.id,
+          work_item_id: selected.workItemId,
+          title: selected.title,
+          reason: selected.reason,
+          minutes: selected.minutes,
+          selected_at: selected.selectedAt,
+        },
+        { onConflict: 'owner_id' },
+      )
+      .select()
+      .single()
+    if (saveError) {
+      setError(`Forge selected a direction, but could not save it: ${saveError.message}`)
+      setData((current) => ({ ...current, aiDirection: selected }))
+      return selected
+    }
+    setData((current) => ({
+      ...current,
+      aiDirection: mapDirection(saved as Record<string, unknown>),
+    }))
+    return selected
   }
   return (
     <Context.Provider

@@ -71,6 +71,14 @@ export type FocusSession = {
   interruptionNote: string | null
 }
 
+export type AiDirection = {
+  workItemId: string
+  title: string
+  reason: string
+  minutes: number
+  selectedAt: string
+}
+
 export type WorkItemComment = {
   id: string
   workItemId: string

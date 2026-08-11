@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, CalendarClock, CheckCircle2, Sparkles } from 'lucide-react'
+import { ArrowRight, CalendarClock, CheckCircle2, Sparkles, Target } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
@@ -9,14 +9,8 @@ import type { WorkItem } from '@/types/workspace'
 export function DashboardPage() {
   const { user } = useAuth()
   const { workItems } = useWorkspace()
-  const { steps, createPlan, startFocus, askAi, error } = useAutopilot()
+  const { steps, aiDirection, createPlan, startFocus, askAi, error } = useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
-  const [aiDirection, setAiDirection] = useState<{
-    workItemId: string
-    title: string
-    reason: string
-    minutes: number
-  } | null>(null)
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
   const activeStep = steps.find((step) => step.status === 'in_progress')
@@ -86,7 +80,6 @@ export function DashboardPage() {
     setIsAskingAi(true)
     const result = await askAi(workItems.filter((item) => item.status !== 'done'))
     if (result) {
-      setAiDirection(result)
       setMessage('Forge AI reviewed your open work and selected one direction.')
     }
     setIsAskingAi(false)
@@ -145,6 +138,35 @@ export function DashboardPage() {
           </>
         )}
       </article>
+      {aiDirection && (
+        <aside className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-400/[0.07] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-violet-200">
+              <Target className="size-4" /> AI direction saved
+            </p>
+            <p className="text-xs text-zinc-500">
+              Selected{' '}
+              {new Intl.DateTimeFormat(undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              }).format(new Date(aiDirection.selectedAt))}
+            </p>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-zinc-300">
+            <span className="font-medium text-zinc-100">Why this now:</span> {aiDirection.reason}
+          </p>
+          <button
+            onClick={() =>
+              window.location.assign(
+                `/work-items?item=${encodeURIComponent(aiDirection.workItemId)}`,
+              )
+            }
+            className="mt-4 text-sm font-medium text-violet-200 hover:text-violet-100"
+          >
+            Open selected work item <ArrowRight className="ml-1 inline size-3" />
+          </button>
+        </aside>
+      )}
       {message && (
         <p className="mt-4 rounded-xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
           {message}
