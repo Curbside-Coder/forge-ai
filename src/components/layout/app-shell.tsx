@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  Menu,
   Search,
   Settings,
   X,
@@ -32,6 +33,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [isAccountOpen, setIsAccountOpen] = useState(false)
+  const [isNavOpen, setIsNavOpen] = useState(false)
   const [now] = useState(() => Date.now())
   const [query, setQuery] = useState('')
   const results = useMemo(() => {
@@ -113,8 +115,15 @@ export function AppShell({ children }: PropsWithChildren) {
       <div className="lg:pl-60">
         <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between bg-[#0c0c0e]/90 px-5 backdrop-blur lg:px-10">
           <button
+            onClick={() => setIsNavOpen(true)}
+            aria-label="Open navigation"
+            className="grid size-10 place-items-center rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-white lg:hidden"
+          >
+            <Menu className="size-5" />
+          </button>
+          <button
             onClick={() => setIsSearchOpen(true)}
-            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
+            className="mr-auto flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
           >
             <Search className="size-4" />
             <span>Search</span>
@@ -205,6 +214,58 @@ export function AppShell({ children }: PropsWithChildren) {
         </header>
         <main className="mx-auto max-w-6xl px-5 py-10 lg:px-10 lg:py-14">{children}</main>
       </div>
+      {isNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            aria-label="Close navigation"
+            onClick={() => setIsNavOpen(false)}
+            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(18rem,85vw)] flex-col bg-[#121216] px-4 py-6 shadow-2xl ring-1 ring-white/[0.08]">
+            <div className="mb-10 flex items-center justify-between px-2">
+              <Link
+                to="/"
+                onClick={() => setIsNavOpen(false)}
+                className="flex items-center gap-3 text-lg font-semibold tracking-[-0.03em]"
+              >
+                <span className="grid size-8 place-items-center rounded-xl bg-zinc-100 text-zinc-950">
+                  <ForgeMark className="size-[19px]" />
+                </span>
+                Forge
+              </Link>
+              <button
+                onClick={() => setIsNavOpen(false)}
+                aria-label="Close navigation"
+                className="p-2 text-zinc-500 hover:text-white"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <nav className="space-y-1">
+              {navigation.map(({ to, label, icon: Icon }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  onClick={() => setIsNavOpen(false)}
+                  activeProps={{ className: 'bg-white/[0.07] text-white' }}
+                  className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <Link
+              to="/settings"
+              onClick={() => setIsNavOpen(false)}
+              className="mt-auto flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+            >
+              <Settings className="size-4" />
+              Settings
+            </Link>
+          </aside>
+        </div>
+      )}
       {isSearchOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/65 px-5 pt-[12vh] backdrop-blur-sm"
