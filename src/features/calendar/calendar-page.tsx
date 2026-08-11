@@ -58,29 +58,28 @@ export function CalendarPage() {
     else setEvents((data ?? []) as CalendarEvent[])
   }, [user])
   useEffect(() => {
-    void load()
+    const timer = window.setTimeout(() => void load(), 0)
+    return () => window.clearTimeout(timer)
   }, [load])
   const range = views.find(([key]) => key === view) ?? views[1]
   const days = useMemo(
     () => Array.from({ length: range[2] }, (_, i) => addDays(startFor(anchor, view), i)),
-    [anchor, view],
+    [anchor, range, view],
   )
   const create = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supabase || !user || !form.title || !form.startsAt || !form.endsAt) return
-    const { error: issue } = await supabase
-      .from('calendar_events')
-      .insert({
-        owner_id: user.id,
-        title: form.title,
-        description: form.description,
-        starts_at: new Date(form.startsAt).toISOString(),
-        ends_at: new Date(form.endsAt).toISOString(),
-        icon: form.icon,
-        color: form.color,
-        preparation_note: form.preparation,
-        source: 'forge',
-      })
+    const { error: issue } = await supabase.from('calendar_events').insert({
+      owner_id: user.id,
+      title: form.title,
+      description: form.description,
+      starts_at: new Date(form.startsAt).toISOString(),
+      ends_at: new Date(form.endsAt).toISOString(),
+      icon: form.icon,
+      color: form.color,
+      preparation_note: form.preparation,
+      source: 'forge',
+    })
     if (issue) setError(issue.message)
     else {
       setForm({
