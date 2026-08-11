@@ -3,7 +3,6 @@ export type WorkItemPriority = 'critical' | 'high' | 'medium' | 'low'
 export type WorkItemType = 'task' | 'bug' | 'feature' | 'idea' | 'research' | 'improvement'
 export type SpecStatus = 'draft' | 'active' | 'blocked' | 'completed' | 'archived'
 export type SpecStepStatus = 'todo' | 'in_progress' | 'blocked' | 'done'
-export type LifeArea = 'work' | 'family' | 'health' | 'learning' | 'faith' | 'finance' | 'creative'
 
 export type Project = {
   id: string
@@ -70,28 +69,6 @@ export type FocusSession = {
   startedAt: string
   completedAt: string | null
   interruptionNote: string | null
-}
-
-export type Idea = {
-  id: string
-  title: string
-  body: string
-  lifeArea: LifeArea
-  status: 'seed' | 'exploring' | 'experiment' | 'incubating' | 'archived'
-  createdAt: string
-  updatedAt: string
-}
-
-export type CompassGoal = {
-  id: string
-  title: string
-  lifeArea: LifeArea
-  horizon: 'week' | 'quarter' | 'year' | 'long_term'
-  outcome: string
-  nextAction: string
-  active: boolean
-  createdAt: string
-  updatedAt: string
 }
 
 export type WorkItemComment = {

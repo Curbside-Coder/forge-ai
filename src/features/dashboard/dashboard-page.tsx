@@ -2,18 +2,18 @@ import { Link } from '@tanstack/react-router'
 import { ArrowRight, CalendarClock, CheckCircle2, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
-import { usePlaybooks } from '@/features/playbooks/playbooks-store'
+import { useAutopilot } from '@/features/autopilot/autopilot-store'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import type { WorkItem } from '@/types/workspace'
 
 export function DashboardPage() {
   const { user } = useAuth()
   const { workItems } = useWorkspace()
-  const { specSteps, addSpec, addSpecStep, startFocus } = usePlaybooks()
+  const { steps, createPlan, startFocus } = useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
   const [now] = useState(() => new Date())
-  const activeStep = specSteps.find((step) => step.status === 'in_progress')
-  const nextSpecStep = specSteps.find((step) => step.status === 'todo')
+  const activeStep = steps.find((step) => step.status === 'in_progress')
+  const nextSpecStep = steps.find((step) => step.status === 'todo')
   const direction = useMemo(() => {
     if (activeStep)
       return {
@@ -49,26 +49,10 @@ export function DashboardPage() {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(now.getTime() + 15 * 60_000))
-  const createPlan = async () => {
+  const generatePlan = async () => {
     if (!direction?.item) return
-    const item = direction.item
-    const spec = await addSpec({
-      title: item.title,
-      projectId: item.projectId,
-      priority: item.priority,
-      status: 'active',
-      problemStatement: item.description || `Move ${item.title} forward.`,
-      desiredOutcome: `A clear, completed next result for ${item.title}.`,
-      inScope: item.description,
-      activePosition: 1,
-    })
+    const spec = await createPlan(direction.item, direction.minutes)
     if (!spec) return
-    await addSpecStep({
-      specId: spec.id,
-      title: item.title,
-      notes: item.description,
-      estimateMinutes: direction.minutes,
-    })
     setMessage('Autopilot created one focused plan. Nothing extra was added.')
   }
   const start = async () => {
@@ -111,7 +95,7 @@ export function DashboardPage() {
               </button>
               {direction.item && (
                 <button
-                  onClick={() => void createPlan()}
+                  onClick={() => void generatePlan()}
                   className="rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/[0.13]"
                 >
                   Turn this into a plan
@@ -156,11 +140,8 @@ export function DashboardPage() {
         <Link to="/work-items" className="hover:text-white">
           All work <ArrowRight className="ml-1 inline size-3" />
         </Link>
-        <Link to="/specs" className="hover:text-white">
-          Plans <ArrowRight className="ml-1 inline size-3" />
-        </Link>
-        <Link to="/ideas" className="hover:text-white">
-          Capture an idea <ArrowRight className="ml-1 inline size-3" />
+        <Link to="/inbox" className="hover:text-white">
+          Capture something <ArrowRight className="ml-1 inline size-3" />
         </Link>
       </div>
     </section>

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { PropsWithChildren } from 'react'
 import { WorkspaceProvider } from '@/features/workspace/workspace-store'
 import { AuthProvider } from '@/features/auth/auth-provider'
-import { PlaybooksProvider } from '@/features/playbooks/playbooks-store'
+import { AutopilotProvider } from '@/features/autopilot/autopilot-store'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,7 +15,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <WorkspaceProvider>
-          <PlaybooksProvider>{children}</PlaybooksProvider>
+          <AutopilotProvider>{children}</AutopilotProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </QueryClientProvider>
