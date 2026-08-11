@@ -162,7 +162,11 @@ async function sendEmail(
   if (!email) return
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Forge-Rhythm/1.0',
+    },
     body: JSON.stringify({ from, to: [email], subject, text: body }),
   })
   if (response.ok)
