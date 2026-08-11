@@ -15,6 +15,7 @@ import {
 import { useMemo, useState, type PropsWithChildren } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { ForgeChat } from '@/features/assistant/forge-chat'
 
 const navigation = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
@@ -256,6 +257,7 @@ export function AppShell({ children }: PropsWithChildren) {
           </div>
         </div>
       )}
+      <ForgeChat />
     </div>
   )
 }

@@ -1,10 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, CalendarClock, CheckCircle2, Sparkles, Target } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { supabase } from '@/lib/supabase'
 import type { WorkItem } from '@/types/workspace'
+
+type UpcomingEvent = { id: string; title: string; starts_at: string; ends_at: string }
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -13,6 +16,7 @@ export function DashboardPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const activeStep = steps.find((step) => step.status === 'in_progress')
   const nextSpecStep = steps.find((step) => step.status === 'todo')
   const direction = useMemo(() => {
@@ -60,6 +64,16 @@ export function DashboardPage() {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(now.getTime() + 15 * 60_000))
+  useEffect(() => {
+    if (!supabase || !user) return
+    void supabase
+      .from('calendar_events')
+      .select('id, title, starts_at, ends_at')
+      .gte('starts_at', new Date().toISOString())
+      .order('starts_at')
+      .limit(4)
+      .then(({ data }) => setUpcomingEvents((data ?? []) as UpcomingEvent[]))
+  }, [user])
   const generatePlan = async () => {
     if (!direction?.item) return
     const spec = await createPlan(direction.item, direction.minutes)
@@ -194,6 +208,41 @@ export function DashboardPage() {
           </p>
         </section>
       </div>
+      <section className="mt-8 rounded-2xl bg-white/[0.035] p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="font-medium">Upcoming attention</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Your next scheduled commitments, in one place.
+            </p>
+          </div>
+          <Link to="/calendar" className="text-sm text-sky-300 hover:text-sky-200">
+            Calendar <ArrowRight className="ml-1 inline size-3" />
+          </Link>
+        </div>
+        {upcomingEvents.length === 0 ? (
+          <p className="mt-5 text-sm text-zinc-600">
+            Nothing scheduled yet. Ask Forge to add time when you need it.
+          </p>
+        ) : (
+          <div className="mt-5 divide-y divide-white/[0.06]">
+            {upcomingEvents.map((event) => (
+              <div key={event.id} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <p className="font-medium text-zinc-200">{event.title}</p>
+                <p className="shrink-0 text-xs text-sky-200">
+                  {new Intl.DateTimeFormat(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  }).format(new Date(event.starts_at))}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       <div className="mt-10 flex flex-wrap gap-x-5 gap-y-3 text-sm text-zinc-500">
         <Link to="/work-items" className="hover:text-white">
           All work <ArrowRight className="ml-1 inline size-3" />
