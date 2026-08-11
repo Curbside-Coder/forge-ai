@@ -2,10 +2,12 @@ import { Link } from '@tanstack/react-router'
 import { ArrowRight, CalendarDays, CircleAlert, ListTodo } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { usePlaybooks } from '@/features/playbooks/playbooks-store'
 
 export function DashboardPage() {
   const { user } = useAuth()
   const { projects, workItems, meetings, source } = useWorkspace()
+  const { specs, specSteps } = usePlaybooks()
   const critical = workItems.filter(
     (item) => item.priority === 'critical' && item.status !== 'done',
   )
@@ -38,6 +40,13 @@ export function DashboardPage() {
       to: '/meetings' as const,
       color: 'text-violet-300',
     },
+    {
+      label: 'Active specs',
+      value: specs.filter((spec) => spec.status === 'active').length,
+      icon: ListTodo,
+      to: '/specs' as const,
+      color: 'text-emerald-300',
+    },
   ]
   const attention = workItems
     .filter((item) => item.status !== 'done')
@@ -51,7 +60,7 @@ export function DashboardPage() {
       <p className="mt-2 max-w-xl text-zinc-500">
         A focused view of what needs your attention today.
       </p>
-      <div className="mt-10 grid gap-6 sm:grid-cols-3 sm:gap-0">
+      <div className="mt-10 grid gap-6 sm:grid-cols-4 sm:gap-0">
         {stats.map(({ label, value, icon: Icon, to, color }) => (
           <Link
             key={label}
@@ -64,6 +73,23 @@ export function DashboardPage() {
           </Link>
         ))}
       </div>
+      <section className="mt-10 rounded-2xl bg-violet-400/[0.06] px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-violet-100">Your 80/20 focus</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              {specSteps.find((step) => step.status !== 'done')?.title ??
+                'Choose an active spec and add its first micro-action.'}
+            </p>
+          </div>
+          <Link
+            to="/focus"
+            className="rounded-lg bg-violet-200 px-3 py-2 text-sm font-medium text-violet-950"
+          >
+            Focus now
+          </Link>
+        </div>
+      </section>
       <div className="mt-14 grid gap-12 lg:grid-cols-2">
         <section>
           <div className="flex items-center justify-between">

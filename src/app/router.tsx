@@ -9,6 +9,11 @@ import { InboxPage } from '@/features/inbox/inbox-page'
 import { ProjectsPage } from '@/features/projects/projects-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { WorkItemsPage } from '@/features/work-items/work-items-page'
+import { SpecsPage } from '@/features/playbooks/specs-page'
+import { FocusPage } from '@/features/playbooks/focus-page'
+import { IdeasPage } from '@/features/playbooks/ideas-page'
+import { CompassPage } from '@/features/playbooks/compass-page'
+import { ReviewPage } from '@/features/playbooks/review-page'
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -60,6 +65,31 @@ const settingsRoute = createRoute({
   path: '/settings',
   component: SettingsPage,
 })
+const specsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/specs',
+  component: SpecsPage,
+})
+const focusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/focus',
+  component: FocusPage,
+})
+const ideasRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ideas',
+  component: IdeasPage,
+})
+const compassRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/compass',
+  component: CompassPage,
+})
+const reviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/review',
+  component: ReviewPage,
+})
 
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
@@ -70,6 +100,11 @@ const routeTree = rootRoute.addChildren([
   logsRoute,
   inboxRoute,
   settingsRoute,
+  specsRoute,
+  focusRoute,
+  ideasRoute,
+  compassRoute,
+  reviewRoute,
 ])
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' })
