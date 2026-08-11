@@ -24,7 +24,7 @@ type NewSpec = Pick<Spec, 'title' | 'projectId' | 'priority'> &
 type PlaybooksContextValue = PlaybooksState & {
   source: 'loading' | 'local' | 'supabase'
   error: string | null
-  addSpec: (spec: NewSpec) => Promise<void>
+  addSpec: (spec: NewSpec) => Promise<Spec | null>
   updateSpec: (id: string, changes: Partial<Spec>) => Promise<void>
   deleteSpec: (id: string) => Promise<void>
   addSpecStep: (
@@ -211,7 +211,7 @@ export function PlaybooksProvider({ children }: PropsWithChildren) {
     }
     if (shouldUseLocal()) {
       save({ ...data, specs: [draft, ...data.specs] })
-      return
+      return draft
     }
     const { data: inserted, error: insertError } = await supabase!
       .from('specs')
@@ -234,12 +234,14 @@ export function PlaybooksProvider({ children }: PropsWithChildren) {
       .single()
     if (insertError) {
       setError(insertError.message)
-      return
+      return null
     }
+    const created = mapSpec(inserted as Record<string, unknown>)
     setData((current) => ({
       ...current,
-      specs: [mapSpec(inserted as Record<string, unknown>), ...current.specs],
+      specs: [created, ...current.specs],
     }))
+    return created
   }
   const updateSpec: PlaybooksContextValue['updateSpec'] = async (id, changes) => {
     if (shouldUseLocal()) {

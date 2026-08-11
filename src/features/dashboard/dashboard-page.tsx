@@ -1,177 +1,185 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, CalendarDays, CircleAlert, ListTodo } from 'lucide-react'
+import { ArrowRight, CalendarClock, CheckCircle2, Sparkles } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
-import { useWorkspace } from '@/features/workspace/workspace-store'
 import { usePlaybooks } from '@/features/playbooks/playbooks-store'
+import { useWorkspace } from '@/features/workspace/workspace-store'
+import type { WorkItem } from '@/types/workspace'
 
 export function DashboardPage() {
   const { user } = useAuth()
-  const { projects, workItems, meetings, source } = useWorkspace()
-  const { specs, specSteps } = usePlaybooks()
-  const critical = workItems.filter(
-    (item) => item.priority === 'critical' && item.status !== 'done',
-  )
-  const inProgress = workItems.filter((item) => item.status === 'in_progress')
-  const today = new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  }).format(new Date())
-  const name = user?.email?.split('@')[0] || 'there'
-  const stats = [
-    {
-      label: 'Critical',
-      value: critical.length,
-      icon: CircleAlert,
-      to: '/work-items' as const,
-      color: 'text-rose-300',
-    },
-    {
-      label: 'In progress',
-      value: inProgress.length,
-      icon: ListTodo,
-      to: '/work-items' as const,
-      color: 'text-sky-300',
-    },
-    {
-      label: 'Meetings',
-      value: meetings.length,
-      icon: CalendarDays,
-      to: '/meetings' as const,
-      color: 'text-violet-300',
-    },
-    {
-      label: 'Active specs',
-      value: specs.filter((spec) => spec.status === 'active').length,
-      icon: ListTodo,
-      to: '/specs' as const,
-      color: 'text-emerald-300',
-    },
-  ]
-  const attention = workItems
-    .filter((item) => item.status !== 'done')
-    .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority))
-    .slice(0, 5)
-
+  const { workItems } = useWorkspace()
+  const { specSteps, addSpec, addSpecStep, startFocus } = usePlaybooks()
+  const [message, setMessage] = useState<string | null>(null)
+  const [now] = useState(() => new Date())
+  const activeStep = specSteps.find((step) => step.status === 'in_progress')
+  const nextSpecStep = specSteps.find((step) => step.status === 'todo')
+  const direction = useMemo(() => {
+    if (activeStep)
+      return {
+        title: activeStep.title,
+        detail: 'You already started this. Finish it before picking up anything else.',
+        minutes: activeStep.estimateMinutes,
+        step: activeStep,
+      }
+    if (nextSpecStep)
+      return {
+        title: nextSpecStep.title,
+        detail: 'This is the next smallest action in your current plan.',
+        minutes: nextSpecStep.estimateMinutes,
+        step: nextSpecStep,
+      }
+    const candidate = [...workItems]
+      .filter((item) => item.status !== 'done')
+      .sort((a, b) => score(b, now.getTime()) - score(a, now.getTime()))[0]
+    return candidate
+      ? {
+          title: candidate.title,
+          detail: reason(candidate),
+          minutes: suggestedMinutes(candidate),
+          item: candidate,
+        }
+      : null
+  }, [activeStep, nextSpecStep, now, workItems])
+  const name =
+    (user?.user_metadata.display_name as string | undefined) ??
+    user?.email?.split('@')[0] ??
+    'there'
+  const blockTime = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(now.getTime() + 15 * 60_000))
+  const createPlan = async () => {
+    if (!direction?.item) return
+    const item = direction.item
+    const spec = await addSpec({
+      title: item.title,
+      projectId: item.projectId,
+      priority: item.priority,
+      status: 'active',
+      problemStatement: item.description || `Move ${item.title} forward.`,
+      desiredOutcome: `A clear, completed next result for ${item.title}.`,
+      inScope: item.description,
+      activePosition: 1,
+    })
+    if (!spec) return
+    await addSpecStep({
+      specId: spec.id,
+      title: item.title,
+      notes: item.description,
+      estimateMinutes: direction.minutes,
+    })
+    setMessage('Autopilot created one focused plan. Nothing extra was added.')
+  }
+  const start = async () => {
+    if (!direction) return
+    await startFocus({
+      title: direction.title,
+      plannedMinutes: direction.minutes,
+      specStepId: direction.step?.id ?? null,
+      workItemId: direction.item?.id ?? null,
+    })
+    setMessage(`Focus block started for ${direction.minutes} minutes.`)
+  }
   return (
-    <section>
-      <p className="text-sm text-zinc-500">{today}</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Good evening, {name}.</h1>
-      <p className="mt-2 max-w-xl text-zinc-500">
-        A focused view of what needs your attention today.
+    <section className="mx-auto max-w-3xl">
+      <p className="text-sm text-zinc-500">
+        {new Intl.DateTimeFormat(undefined, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        }).format(now)}
       </p>
-      <div className="mt-10 grid gap-6 sm:grid-cols-4 sm:gap-0">
-        {stats.map(({ label, value, icon: Icon, to, color }) => (
-          <Link
-            key={label}
-            to={to}
-            className="border-white/[0.08] transition hover:bg-white/[0.025] sm:border-r sm:px-8 sm:first:pl-0 sm:last:border-r-0"
-          >
-            <Icon className={`size-4 ${color}`} />
-            <p className="mt-5 text-3xl font-semibold tracking-[-0.03em]">{value}</p>
-            <p className="mt-1 text-sm text-zinc-500">{label}</p>
-          </Link>
-        ))}
-      </div>
-      <section className="mt-10 rounded-2xl bg-violet-400/[0.06] px-6 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-violet-100">Your 80/20 focus</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              {specSteps.find((step) => step.status !== 'done')?.title ??
-                'Choose an active spec and add its first micro-action.'}
-            </p>
-          </div>
-          <Link
-            to="/focus"
-            className="rounded-lg bg-violet-200 px-3 py-2 text-sm font-medium text-violet-950"
-          >
-            Focus now
-          </Link>
+      <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Good evening, {name}.</h1>
+      <p className="mt-2 text-zinc-500">Forge cleared the noise. Here is your next direction.</p>
+      <article className="mt-10 rounded-3xl bg-gradient-to-br from-violet-400/[0.12] to-white/[0.035] p-7 sm:p-10">
+        <div className="flex items-center gap-2 text-sm font-medium text-violet-200">
+          <Sparkles className="size-4" /> Forge Autopilot
         </div>
-      </section>
-      <div className="mt-14 grid gap-12 lg:grid-cols-2">
-        <section>
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-medium">Needs attention</h2>
-            <Link to="/work-items" className="text-sm text-zinc-500 transition hover:text-white">
-              View all
-            </Link>
-          </div>
-          <div className="mt-4 space-y-2">
-            {attention.length === 0 ? (
-              <p className="rounded-xl bg-white/[0.025] px-5 py-6 text-sm text-zinc-600">
-                Nothing urgent. Capture work when it comes up.
-              </p>
-            ) : (
-              attention.map((item) => (
-                <Link
-                  key={item.id}
-                  to="/work-items"
-                  className="flex items-center justify-between rounded-lg px-4 py-3 text-left text-sm transition hover:bg-white/[0.04]"
+        {direction ? (
+          <>
+            <h2 className="mt-6 max-w-2xl text-2xl font-semibold tracking-[-0.025em] text-zinc-50">
+              {direction.title}
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-400">{direction.detail}</p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <button
+                onClick={() => void start()}
+                className="rounded-xl bg-violet-200 px-4 py-2.5 text-sm font-medium text-violet-950"
+              >
+                Start {direction.minutes}-minute focus
+              </button>
+              {direction.item && (
+                <button
+                  onClick={() => void createPlan()}
+                  className="rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/[0.13]"
                 >
-                  <span>
-                    <span className="block text-zinc-200">{item.title}</span>
-                    <span className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-                      <span className={`rounded-md px-1.5 py-0.5 ${priorityBadge(item.priority)}`}>
-                        {item.priority}
-                      </span>
-                      <span>{item.status.replace('_', ' ')}</span>
-                    </span>
-                  </span>
-                  <ArrowRight className="size-4 text-zinc-500" />
-                </Link>
-              ))
-            )}
-          </div>
+                  Turn this into a plan
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="mt-6 text-2xl font-semibold">Your runway is clear.</h2>
+            <p className="mt-3 text-sm text-zinc-500">
+              Capture an idea, work item, or meeting note when something needs your attention.
+            </p>
+          </>
+        )}
+      </article>
+      {message && (
+        <p className="mt-4 rounded-xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+          {message}
+        </p>
+      )}
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <section className="rounded-2xl bg-white/[0.035] p-6">
+          <CalendarClock className="size-4 text-sky-300" />
+          <h2 className="mt-4 font-medium">Suggested time</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            Protect the next open {direction?.minutes ?? 30}-minute block, starting around{' '}
+            {blockTime}. Calendar-aware scheduling will replace this suggestion once your calendar
+            connection is enabled.
+          </p>
         </section>
-        <section>
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-medium">Projects</h2>
-            <Link to="/projects" className="text-sm text-zinc-500 transition hover:text-white">
-              View all
-            </Link>
-          </div>
-          <div className="mt-4 rounded-2xl bg-white/[0.035] p-7">
-            {source === 'loading' ? (
-              <p className="text-sm text-zinc-500">Loading your workspace…</p>
-            ) : projects.length === 0 ? (
-              <p className="text-sm leading-6 text-zinc-500">
-                Create a project to start organizing work.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {projects.slice(0, 4).map((project) => {
-                  const activeCount = workItems.filter(
-                    (item) => item.projectId === project.id && item.status !== 'done',
-                  ).length
-                  return (
-                    <Link key={project.id} to="/projects" className="block group">
-                      <p className="text-sm font-medium text-zinc-200 group-hover:text-white">
-                        {project.name}
-                      </p>
-                      <p className="mt-1 text-sm text-zinc-500">{activeCount} active work items</p>
-                    </Link>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+        <section className="rounded-2xl bg-white/[0.035] p-6">
+          <CheckCircle2 className="size-4 text-emerald-300" />
+          <h2 className="mt-4 font-medium">What Forge is filtering out</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            {workItems.filter((item) => item.status !== 'done').length} open work items stay in the
+            background. You only need to decide whether to start this one.
+          </p>
         </section>
+      </div>
+      <div className="mt-10 flex flex-wrap gap-x-5 gap-y-3 text-sm text-zinc-500">
+        <Link to="/work-items" className="hover:text-white">
+          All work <ArrowRight className="ml-1 inline size-3" />
+        </Link>
+        <Link to="/specs" className="hover:text-white">
+          Plans <ArrowRight className="ml-1 inline size-3" />
+        </Link>
+        <Link to="/ideas" className="hover:text-white">
+          Capture an idea <ArrowRight className="ml-1 inline size-3" />
+        </Link>
       </div>
     </section>
   )
 }
 
-function priorityRank(priority: 'critical' | 'high' | 'medium' | 'low') {
-  return { critical: 0, high: 1, medium: 2, low: 3 }[priority]
+function score(item: WorkItem, now: number) {
+  const priority = { critical: 100, high: 70, medium: 40, low: 10 }[item.priority]
+  const progress = item.status === 'in_progress' ? 24 : item.status === 'in_review' ? 15 : 0
+  const age = Math.min(20, Math.floor((now - new Date(item.updatedAt).getTime()) / 86_400_000))
+  return priority + progress + age
 }
-
-function priorityBadge(priority: 'critical' | 'high' | 'medium' | 'low') {
-  return {
-    critical: 'bg-rose-400/10 text-rose-300',
-    high: 'bg-amber-400/10 text-amber-300',
-    medium: 'bg-sky-400/10 text-sky-300',
-    low: 'bg-zinc-400/10 text-zinc-400',
-  }[priority]
+function suggestedMinutes(item: WorkItem) {
+  return item.priority === 'critical' || item.status === 'in_progress' ? 45 : 25
+}
+function reason(item: WorkItem) {
+  if (item.priority === 'critical')
+    return 'This is critical work and has the strongest claim on your attention.'
+  if (item.status === 'in_progress')
+    return 'You already have momentum here. Finishing beats starting something new.'
+  return 'This is the highest-leverage available direction based on priority and time without movement.'
 }

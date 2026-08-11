@@ -3,19 +3,14 @@ import {
   Bell,
   Boxes,
   CalendarDays,
-  ClipboardList,
   FolderKanban,
   Inbox,
-  ScrollText,
   LayoutDashboard,
   Lightbulb,
   ListTodo,
   LogOut,
   Search,
   Settings,
-  RefreshCw,
-  TimerReset,
-  Target,
   X,
 } from 'lucide-react'
 import { useMemo, useState, type PropsWithChildren } from 'react'
@@ -26,15 +21,10 @@ const navigation = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/work-items', label: 'Work items', icon: ListTodo },
-  { to: '/specs', label: 'Specs', icon: ClipboardList },
-  { to: '/focus', label: 'Focus', icon: TimerReset },
   { to: '/ideas', label: 'Ideas', icon: Lightbulb },
-  { to: '/compass', label: 'Compass', icon: Target },
-  { to: '/review', label: 'Review', icon: RefreshCw },
   { to: '/meetings', label: 'Meetings', icon: CalendarDays },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
-  { to: '/logs', label: 'Logs', icon: ScrollText },
 ] as const
 
 export function AppShell({ children }: PropsWithChildren) {
