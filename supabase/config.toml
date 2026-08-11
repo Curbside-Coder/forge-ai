@@ -1,5 +1,8 @@
 [functions.autopilot-plan]
 verify_jwt = true
 
+[functions.meeting-analyze]
+verify_jwt = true
+
 [functions.forge-rhythm]
 verify_jwt = false

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, CheckCheck, Plus, Sparkles } from 'lucide-react'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { supabase } from '@/lib/supabase'
 import type { WorkItemPriority, WorkItemType } from '@/types/workspace'
 import { MeetingDetail } from './meeting-detail'
 
@@ -20,6 +21,8 @@ export function MeetingsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [saved, setSaved] = useState<string[]>([])
   const [meetingSaved, setMeetingSaved] = useState(false)
+  const [summary, setSummary] = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(() =>
@@ -29,10 +32,37 @@ export function MeetingsPage() {
     setToast(message)
     window.setTimeout(() => setToast(null), 3600)
   }
-  const generate = () => {
-    setSuggestions(extractActionItems(notes, projectId || projects[0]?.id || ''))
+  const generate = async () => {
+    if (!notes.trim()) return
+    setIsAnalyzing(true)
+    if (!supabase) {
+      setSuggestions(extractActionItems(notes, projectId || projects[0]?.id || ''))
+      setSummary(
+        'Local suggestions were generated. Connect Forge AI for an intelligent meeting summary.',
+      )
+      setIsAnalyzing(false)
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('meeting-analyze', {
+      body: { title, notes },
+    })
+    if (error || data?.error) {
+      notify(data?.error ?? 'Forge AI could not analyze this meeting. Please try again.')
+      setIsAnalyzing(false)
+      return
+    }
+    const nextProjectId = projectId || projects[0]?.id || ''
+    setSuggestions(
+      ((data.workItems ?? []) as Omit<Suggestion, 'projectId'>[]).map((item) => ({
+        ...item,
+        projectId: nextProjectId,
+      })),
+    )
+    setSummary(data.summary as string)
     setSaved([])
     setMeetingSaved(false)
+    setIsAnalyzing(false)
+    notify('Forge AI summarized the meeting and prepared work items for review.')
   }
   const selectedMeeting = meetings.find((meeting) => meeting.id === selectedMeetingId) ?? null
   const openMeeting = (id: string) => {
@@ -69,9 +99,7 @@ export function MeetingsPage() {
       title: title.trim() || 'Untitled meeting',
       notes: notes.trim(),
       summary:
-        suggestions.length > 0
-          ? `${suggestions.length} work-item suggestion${suggestions.length === 1 ? '' : 's'} reviewed.`
-          : null,
+        summary ?? (suggestions.length ? `${suggestions.length} work items reviewed.` : null),
     })
     setMeetingSaved(true)
     notify('Meeting notes saved to Forge.')
@@ -120,12 +148,12 @@ export function MeetingsPage() {
           />
           <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={generate}
-              disabled={!notes.trim()}
+              onClick={() => void generate()}
+              disabled={!notes.trim() || isAnalyzing}
               className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Sparkles className="size-4" />
-              Generate suggestions
+              {isAnalyzing ? 'Analyzing…' : 'Ask Forge AI'}
             </button>
             <button
               onClick={() => void createAll()}
@@ -151,6 +179,14 @@ export function MeetingsPage() {
             Each draft includes a type, priority, and concise context. Save one item or create them
             all.
           </p>
+          {summary && (
+            <div className="mt-4 rounded-xl border border-violet-300/15 bg-violet-400/[0.07] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-violet-200">
+                Forge AI summary
+              </p>
+              <p className="mt-2 text-sm leading-6 text-zinc-300">{summary}</p>
+            </div>
+          )}
           <div className="mt-5 space-y-3">
             {suggestions.length === 0 && (
               <p className="py-8 text-center text-sm text-zinc-600">
