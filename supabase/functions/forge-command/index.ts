@@ -30,16 +30,20 @@ Deno.serve(async (request) => {
       now?: string
       timezone?: string
       projects?: { id: string; name: string }[]
+      history?: { role: 'user' | 'assistant'; body: string }[]
     }
     const message = body.message?.trim().slice(0, 4000) ?? ''
     if (!message) return respond({ error: 'Write a request for Forge first.' }, 400)
-    const prompt = `You are Forge, an execution assistant for one developer. Interpret the user's request and return JSON only: {message:string, actions:Array}. Each action must be one of:
+    const history = (body.history ?? [])
+      .slice(-12)
+      .map((entry) => ({ role: entry.role, body: entry.body.slice(0, 1200) }))
+    const prompt = `You are Forge, an execution assistant for one developer. Use the conversation history only as context; the latest user request controls any action. Interpret the user's request and return JSON only: {message:string, actions:Array}. Each action must be one of:
 {type:"create_calendar_event",title:string,description:string,startsAt:string,endsAt:string}
 {type:"create_project",name:string,description:string}
 {type:"create_work_item",title:string,description:string,priority:"critical"|"high"|"medium"|"low",workType:"task"|"bug"|"feature"|"idea"|"research"|"improvement",projectId?:string,projectName?:string}
 {type:"create_meeting",title:string,notes:string,projectId?:string}
 
-Create actions only when explicitly requested. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.\n\nUser request: ${message}`
+Create actions only when explicitly requested. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.\n\nConversation history: ${JSON.stringify(history)}\n\nUser request: ${message}`
     const openai = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },

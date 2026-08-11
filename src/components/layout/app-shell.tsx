@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import {
   Bell,
-  Boxes,
   CalendarDays,
   FolderKanban,
   Inbox,
@@ -16,6 +15,7 @@ import { useMemo, useState, type PropsWithChildren } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import { ForgeChat } from '@/features/assistant/forge-chat'
+import { ForgeMark } from '@/components/brand/forge-mark'
 
 const navigation = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
@@ -84,7 +84,7 @@ export function AppShell({ children }: PropsWithChildren) {
           className="mb-12 flex items-center gap-3 px-2 text-lg font-semibold tracking-[-0.03em]"
         >
           <span className="grid size-8 place-items-center rounded-xl bg-zinc-100 text-zinc-950">
-            <Boxes className="size-[17px]" />
+            <ForgeMark className="size-[19px]" />
           </span>
           Forge
         </Link>

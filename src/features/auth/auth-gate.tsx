@@ -1,5 +1,6 @@
 import { useEffect, useState, type PropsWithChildren } from 'react'
-import { Boxes, Mail } from 'lucide-react'
+import { Mail } from 'lucide-react'
+import { ForgeMark } from '@/components/brand/forge-mark'
 import { useAuth } from './auth-provider'
 
 export function AuthGate({ children }: PropsWithChildren) {
@@ -49,7 +50,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     <main className="grid min-h-screen place-items-center bg-[#0c0c0e] px-5 text-zinc-100">
       <form onSubmit={submit} className="w-full max-w-sm rounded-3xl bg-white/[0.04] p-8">
         <div className="grid size-10 place-items-center rounded-xl bg-zinc-100 text-zinc-950">
-          <Boxes className="size-5" />
+          <ForgeMark className="size-5" />
         </div>
         <h1 className="mt-8 text-2xl font-semibold tracking-[-0.03em]">Welcome to Forge.</h1>
         <p className="mt-2 text-sm leading-6 text-zinc-500">
