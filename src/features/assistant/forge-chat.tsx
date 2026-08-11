@@ -89,7 +89,12 @@ export function ForgeChat() {
           if (error) throw error
         }
         if (action.type === 'create_work_item' && action.title) {
-          let projectId = action.projectId ?? defaultProjectId
+          let projectId =
+            action.projectId ??
+            projects.find(
+              (project) => project.name.toLowerCase() === action.projectName?.toLowerCase(),
+            )?.id ??
+            defaultProjectId
           if (!projectId) {
             const { data, error } = await supabase
               .from('projects')
