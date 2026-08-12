@@ -74,12 +74,14 @@ export function ForgeChat() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isSessionsOpen, setIsSessionsOpen] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(
     () => window.localStorage.getItem('forge.chat.voice') === 'on',
   )
   const latestMessageRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLInputElement | null>(null)
   const recognitionRef = useRef<Recognition | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -195,7 +197,12 @@ export function ForgeChat() {
   }, [loading, messages.length, open])
   useEffect(() => {
     window.localStorage.setItem('forge.chat.voice', voiceEnabled ? 'on' : 'off')
-    if (!voiceEnabled) window.speechSynthesis?.cancel()
+    if (!voiceEnabled) {
+      audioRef.current?.pause()
+      window.speechSynthesis?.cancel()
+      const timer = window.setTimeout(() => setIsSpeaking(false), 0)
+      return () => window.clearTimeout(timer)
+    }
   }, [voiceEnabled])
   const createSession = async () => {
     if (!supabase || !user) return null
@@ -326,9 +333,27 @@ export function ForgeChat() {
     ])
     if (voiceEnabled) speak(data.message)
   }
-  const speak = (text: string) => {
-    if (!('speechSynthesis' in window)) return
+  const speak = async (text: string) => {
+    audioRef.current?.pause()
     window.speechSynthesis.cancel()
+    setIsSpeaking(true)
+    if (supabase) {
+      const { data, error: speechError } = await supabase.functions.invoke('forge-speech', {
+        body: { text },
+      })
+      if (!speechError && data?.audioBase64) {
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`)
+        audioRef.current = audio
+        audio.onended = () => setIsSpeaking(false)
+        audio.onerror = () => setIsSpeaking(false)
+        await audio.play().catch(() => setIsSpeaking(false))
+        return
+      }
+    }
+    if (!('speechSynthesis' in window)) {
+      setIsSpeaking(false)
+      return
+    }
     const utterance = new SpeechSynthesisUtterance(text.replace(/[`#*_]/g, ''))
     utterance.rate = 1
     utterance.pitch = 0.9
@@ -339,6 +364,8 @@ export function ForgeChat() {
           candidate.lang.startsWith('en') && /male|daniel|google/i.test(candidate.name),
       )
     if (voice) utterance.voice = voice
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
     window.speechSynthesis.speak(utterance)
   }
   const listen = () => {
@@ -351,6 +378,7 @@ export function ForgeChat() {
       setError('Voice input is not available in this browser. Use Chrome or Edge for voice mode.')
       return
     }
+    audioRef.current?.pause()
     window.speechSynthesis?.cancel()
     let transcript = ''
     const recognition = new SpeechRecognition()
@@ -626,12 +654,12 @@ export function ForgeChat() {
                 <p className="leading-6">{entry.body}</p>
                 {entry.role === 'assistant' && (
                   <button
-                    onClick={() => speak(entry.body)}
-                    title="Hear this answer again"
-                    aria-label="Hear this answer again"
+                    onClick={() => void speak(entry.body)}
+                    title={isSpeaking ? 'Forge is speaking' : 'Hear this answer again'}
+                    aria-label={isSpeaking ? 'Forge is speaking' : 'Hear this answer again'}
                     className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-zinc-500 transition hover:bg-[#29282b] hover:text-[#eee9df]"
                   >
-                    <Volume2 className="size-3" /> Replay
+                    <Volume2 className="size-3" /> {isSpeaking ? 'Speaking…' : 'Replay'}
                   </button>
                 )}
                 {entry.usage && (
