@@ -8,6 +8,7 @@
   background: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  color-scheme: dark;
 }
 body {
   margin: 0;
@@ -33,4 +34,94 @@ select {
 select option {
   background: #18181b;
   color: #f4f4f5;
+}
+
+/* Low-glare controls: Forge uses parchment-white rather than eye-searing pure white. */
+[class~='bg-zinc-100'] {
+  background-color: #d7d2c7 !important;
+}
+[class~='text-zinc-950'] {
+  color: #1b1916 !important;
+}
+[class*='hover:bg-white']:hover {
+  background-color: #e2ddd2 !important;
+}
+
+select,
+.forge-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.65rem;
+  background-color: rgba(8, 8, 10, 0.55);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 0.7rem center;
+  background-repeat: no-repeat;
+  background-size: 0.9rem;
+  padding-right: 2.4rem;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+select:hover,
+.forge-select:hover,
+select:focus,
+.forge-select:focus {
+  border-color: rgba(196, 181, 253, 0.5);
+  background-color: rgba(255, 255, 255, 0.055);
+  outline: none;
+}
+
+input[type='datetime-local'],
+.forge-date-input {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, rgba(196, 181, 253, 0.08), rgba(8, 8, 10, 0.5));
+  color: #ddd9d0;
+  color-scheme: dark;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+input[type='datetime-local']:hover,
+input[type='datetime-local']:focus,
+.forge-date-input:hover,
+.forge-date-input:focus {
+  border-color: rgba(125, 211, 252, 0.5);
+  background-color: rgba(125, 211, 252, 0.06);
+  outline: none;
+}
+
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(86%) sepia(14%) saturate(498%) hue-rotate(192deg);
+  opacity: 0.8;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.38) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.36);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(196, 181, 253, 0.56);
+  background-clip: padding-box;
 }
