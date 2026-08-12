@@ -270,11 +270,12 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
   const completeFocus = async (id: string) => {
     const session = data.focusSessions.find((entry) => entry.id === id)
     if (!session) return
+    const completedAt = new Date().toISOString()
     if (offline()) {
       save({
         ...data,
         focusSessions: data.focusSessions.map((entry) =>
-          entry.id === id ? { ...entry, completedAt: new Date().toISOString() } : entry,
+          entry.id === id ? { ...entry, completedAt } : entry,
         ),
         steps: data.steps.map((step) =>
           step.id === session.specStepId ? { ...step, status: 'done' } : step,
@@ -282,14 +283,33 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       })
       return
     }
+    // End the visible timer immediately. Restore it only if the protected database write fails.
+    setData((current) => ({
+      ...current,
+      focusSessions: current.focusSessions.map((entry) =>
+        entry.id === id ? { ...entry, completedAt } : entry,
+      ),
+      steps: current.steps.map((step) =>
+        step.id === session.specStepId ? { ...step, status: 'done' } : step,
+      ),
+    }))
     const { data: updated, error: updateError } = await supabase!
       .from('focus_sessions')
-      .update({ completed_at: new Date().toISOString() })
+      .update({ completed_at: completedAt })
       .eq('id', id)
       .select()
       .single()
     if (updateError) {
       setError(updateError.message)
+      setData((current) => ({
+        ...current,
+        focusSessions: current.focusSessions.map((entry) =>
+          entry.id === id ? { ...entry, completedAt: null } : entry,
+        ),
+        steps: current.steps.map((step) =>
+          step.id === session.specStepId ? { ...step, status: 'in_progress' } : step,
+        ),
+      }))
       return
     }
     if (session.specStepId)

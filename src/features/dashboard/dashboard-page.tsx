@@ -26,6 +26,7 @@ export function DashboardPage() {
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
   const [clock, setClock] = useState(() => Date.now())
+  const [isCompletingFocus, setIsCompletingFocus] = useState(false)
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [serviceStatus, setServiceStatus] = useState<'checking' | 'connected' | 'offline'>(
     'checking',
@@ -142,7 +143,9 @@ export function DashboardPage() {
   }
   const finishFocus = async () => {
     if (!activeFocus) return
+    setIsCompletingFocus(true)
     await completeFocus(activeFocus.id)
+    setIsCompletingFocus(false)
     setMessage(
       'Focus block completed. Mark the work item done only if the outcome is genuinely finished.',
     )
@@ -184,9 +187,11 @@ export function DashboardPage() {
           </div>
           <button
             onClick={() => void finishFocus()}
+            disabled={isCompletingFocus}
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/[.1] px-3 py-2 text-sm text-zinc-100 transition hover:bg-[#29282b] hover:text-[#eee9df]"
           >
-            <CircleStop className="size-4" /> Complete focus block
+            <CircleStop className="size-4" />
+            {isCompletingFocus ? 'Recording completion…' : 'Complete focus block'}
           </button>
         </section>
       )}
