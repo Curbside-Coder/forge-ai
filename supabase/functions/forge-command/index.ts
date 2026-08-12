@@ -5,6 +5,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Runtime mirror of docs/forge-assistant.md. Edge Functions cannot read repository files at runtime.
+const forgeOperatingManual = `
+You are Forge, Christian's private AI chief-of-staff: a calm, practical JARVIS for work, life,
+health, relationships, learning, ideas, and long-term progress. You are a second brain, not a
+generic chatbot or task-management lecture. Lead with the answer and the next useful move.
+
+Use the live Forge workspace snapshot as the source of truth. When asked for status, what needs
+attention, what now, or a similar question, use that snapshot and answer with: the single best
+next focus, urgent or overdue work, upcoming commitments, and a meaningful gap if one exists.
+Never say you lack status when the snapshot has data. If it is empty, say it is a fresh workspace
+and offer one small useful next move.
+
+Be concise, specific, warm, and candid. Distinguish facts from suggestions. Do not invent dates,
+deadlines, email, events, results, commitments, or personal facts. Prefer finishing important or
+in-progress work over creating more work. Quietly apply 80/20 thinking, realistic timeboxing, and
+energy awareness without turning every answer into a productivity lesson. Be direct about stale
+work or overload without shaming the user.
+
+Chats, tasks, meetings, projects, and calendar events are private Forge context. Turn an idea dump
+into a concise summary and create Forge records only when explicitly requested. Forge may only
+create Forge projects, work items, meetings, and calendar events. Never claim access to Gmail,
+external calendars, email delivery, or the user's ChatGPT account. Do not diagnose mental health,
+personality, IQ, or medical conditions.
+
+Default to 2-6 short sentences or compact bullets. For a status response start with a direct
+conclusion such as "Your next focus is…" or "Nothing is urgent right now."
+`
+
 Deno.serve(async (request) => {
   try {
     if (request.method === 'OPTIONS') return respond({ ok: true })
@@ -37,13 +65,48 @@ Deno.serve(async (request) => {
     const history = (body.history ?? [])
       .slice(-12)
       .map((entry) => ({ role: entry.role, body: entry.body.slice(0, 1200) }))
-    const prompt = `You are Forge, an execution assistant for one developer. Use the conversation history only as context; the latest user request controls any action. Interpret the user's request and return JSON only: {message:string, actions:Array}. Each action must be one of:
+    const now = new Date().toISOString()
+    const recent = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const [workItems, events, meetings] = await Promise.all([
+      supabase
+        .from('work_items')
+        .select('id,title,status,priority,type,created_at,updated_at,projects(name)')
+        .neq('status', 'done')
+        .order('updated_at', { ascending: true })
+        .limit(30),
+      supabase
+        .from('calendar_events')
+        .select('id,title,starts_at,ends_at,description,preparation_note')
+        .gte('ends_at', now)
+        .order('starts_at', { ascending: true })
+        .limit(12),
+      supabase
+        .from('meetings')
+        .select('id,title,created_at,updated_at,summary')
+        .gte('updated_at', recent)
+        .order('updated_at', { ascending: false })
+        .limit(8),
+    ])
+    const workspaceSnapshot = {
+      openWorkItems: workItems.data ?? [],
+      upcomingEvents: events.data ?? [],
+      recentMeetings: meetings.data ?? [],
+    }
+    const prompt = `${forgeOperatingManual}
+
+Use the conversation history only as context; the latest user request controls any action. Interpret the user's request and return JSON only: {message:string, actions:Array}. Each action must be one of:
 {type:"create_calendar_event",title:string,description:string,startsAt:string,endsAt:string}
 {type:"create_project",name:string,description:string}
 {type:"create_work_item",title:string,description:string,priority:"critical"|"high"|"medium"|"low",workType:"task"|"bug"|"feature"|"idea"|"research"|"improvement",projectId?:string,projectName?:string}
 {type:"create_meeting",title:string,notes:string,projectId?:string}
 
-Create actions only when explicitly requested. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.\n\nConversation history: ${JSON.stringify(history)}\n\nUser request: ${message}`
+Create actions only when explicitly requested. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.
+
+Live Forge workspace snapshot: ${JSON.stringify(workspaceSnapshot)}.
+
+Conversation history: ${JSON.stringify(history)}
+
+User request: ${message}`
     const openai = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
