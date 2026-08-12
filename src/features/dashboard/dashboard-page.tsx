@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleStop,
+  ListChecks,
   Sparkles,
   Target,
   Timer,
@@ -20,8 +21,17 @@ type UpcomingEvent = { id: string; title: string; starts_at: string; ends_at: st
 export function DashboardPage() {
   const { user } = useAuth()
   const { workItems, updateWorkItem } = useWorkspace()
-  const { steps, focusSessions, aiDirection, createPlan, startFocus, completeFocus, askAi, error } =
-    useAutopilot()
+  const {
+    plans,
+    steps,
+    focusSessions,
+    aiDirection,
+    createPlan,
+    startFocus,
+    completeFocus,
+    askAi,
+    error,
+  } = useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
@@ -45,6 +55,10 @@ export function DashboardPage() {
     return () => window.clearInterval(timer)
   }, [activeFocus])
   const nextSpecStep = steps.find((step) => step.status === 'todo' && isOpenStep(step.workItemId))
+  const visiblePlanStep = activeStep ?? nextSpecStep
+  const activePlan = plans.find(
+    (plan) => plan.id === visiblePlanStep?.specId && plan.status === 'active',
+  )
   const validAiDirection = useMemo(() => {
     if (!aiDirection) return null
     const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
@@ -278,6 +292,45 @@ export function DashboardPage() {
           </div>
         )}
       </article>
+      {activePlan && visiblePlanStep && (
+        <section className="mt-4 rounded-2xl border border-white/[.08] bg-white/[.025] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[.14em] text-violet-200">
+                <ListChecks className="size-3.5" /> Current plan
+              </p>
+              <h2 className="mt-2 font-medium text-zinc-100">{activePlan.title}</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
+                Outcome: {activePlan.desiredOutcome}
+              </p>
+            </div>
+            <span className="rounded-md bg-violet-400/10 px-2 py-1 text-xs text-violet-200">
+              {visiblePlanStep.estimateMinutes} min
+            </span>
+          </div>
+          <div className="mt-4 rounded-xl bg-black/20 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              {visiblePlanStep.status === 'in_progress' ? 'Doing now' : 'Next move'}
+            </p>
+            <p className="mt-1 text-sm text-zinc-200">{visiblePlanStep.title}</p>
+            {visiblePlanStep.notes && (
+              <p className="mt-1 text-xs leading-5 text-zinc-500">{visiblePlanStep.notes}</p>
+            )}
+          </div>
+          {visiblePlanStep.workItemId && (
+            <button
+              onClick={() =>
+                window.location.assign(
+                  `/work-items?item=${encodeURIComponent(visiblePlanStep.workItemId!)}`,
+                )
+              }
+              className="mt-4 text-sm font-medium text-violet-200 hover:text-violet-100"
+            >
+              Open linked work item <ArrowRight className="ml-1 inline size-3" />
+            </button>
+          )}
+        </section>
+      )}
       {validAiDirection && (
         <aside className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-400/[0.07] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
