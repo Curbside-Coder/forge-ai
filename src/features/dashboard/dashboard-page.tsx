@@ -1,5 +1,13 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, CalendarClock, CheckCircle2, Sparkles, Target } from 'lucide-react'
+import {
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  CircleStop,
+  Sparkles,
+  Target,
+  Timer,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
@@ -12,10 +20,12 @@ type UpcomingEvent = { id: string; title: string; starts_at: string; ends_at: st
 export function DashboardPage() {
   const { user } = useAuth()
   const { workItems } = useWorkspace()
-  const { steps, aiDirection, createPlan, startFocus, askAi, error } = useAutopilot()
+  const { steps, focusSessions, aiDirection, createPlan, startFocus, completeFocus, askAi, error } =
+    useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
+  const [clock, setClock] = useState(() => Date.now())
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [serviceStatus, setServiceStatus] = useState<'checking' | 'connected' | 'offline'>(
     'checking',
@@ -27,6 +37,12 @@ export function DashboardPage() {
   const activeStep = steps.find(
     (step) => step.status === 'in_progress' && isOpenStep(step.workItemId),
   )
+  const activeFocus = focusSessions.find((session) => !session.completedAt) ?? null
+  useEffect(() => {
+    if (!activeFocus) return
+    const timer = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [activeFocus])
   const nextSpecStep = steps.find((step) => step.status === 'todo' && isOpenStep(step.workItemId))
   const validAiDirection = useMemo(() => {
     if (!aiDirection) return null
@@ -109,6 +125,10 @@ export function DashboardPage() {
     setMessage(`Plan ready: “${spec.title}” now has one next action queued below.`)
   }
   const start = async () => {
+    if (activeFocus) {
+      setMessage(`A focus block is already running: ${activeFocus.title}.`)
+      return
+    }
     if (!direction) return
     await startFocus({
       title: direction.title,
@@ -116,7 +136,16 @@ export function DashboardPage() {
       specStepId: direction.step?.id ?? null,
       workItemId: direction.item?.id ?? null,
     })
-    setMessage(`Focus block started for ${direction.minutes} minutes.`)
+    setMessage(
+      `Focus block started: ${direction.minutes} minutes. Keep this page open to track it.`,
+    )
+  }
+  const finishFocus = async () => {
+    if (!activeFocus) return
+    await completeFocus(activeFocus.id)
+    setMessage(
+      'Focus block completed. Mark the work item done only if the outcome is genuinely finished.',
+    )
   }
   const improveWithAi = async () => {
     setIsAskingAi(true)
@@ -137,6 +166,30 @@ export function DashboardPage() {
       </p>
       <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Good evening, {name}.</h1>
       <p className="mt-2 text-zinc-500">Forge cleared the noise. Here is your next direction.</p>
+      {activeFocus && (
+        <section className="mt-6 rounded-2xl border border-violet-300/20 bg-violet-400/[.09] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[.14em] text-violet-200">
+                <Timer className="size-3.5" /> Focus in progress
+              </p>
+              <h2 className="mt-2 text-lg font-semibold text-zinc-100">{activeFocus.title}</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                One thing only. Finish the next concrete piece before switching contexts.
+              </p>
+            </div>
+            <p className="font-mono text-2xl font-semibold tabular-nums text-violet-100">
+              {remainingFocusTime(activeFocus.startedAt, activeFocus.plannedMinutes, clock)}
+            </p>
+          </div>
+          <button
+            onClick={() => void finishFocus()}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/[.1] px-3 py-2 text-sm text-zinc-100 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <CircleStop className="size-4" /> Complete focus block
+          </button>
+        </section>
+      )}
       <article className="mt-10 rounded-3xl bg-gradient-to-br from-violet-400/[0.12] to-white/[0.035] p-7 sm:p-10">
         <div className="flex items-center gap-2 text-sm font-medium text-violet-200">
           <Sparkles className="size-4" /> Forge Autopilot
@@ -334,4 +387,10 @@ function reason(item: WorkItem) {
   if (item.status === 'in_progress')
     return 'You already have momentum here. Finishing beats starting something new.'
   return 'This is the highest-leverage available direction based on priority and time without movement.'
+}
+function remainingFocusTime(startedAt: string, plannedMinutes: number, now: number) {
+  const remaining = Math.max(0, new Date(startedAt).getTime() + plannedMinutes * 60_000 - now)
+  const minutes = Math.floor(remaining / 60_000)
+  const seconds = Math.floor((remaining % 60_000) / 1000)
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
