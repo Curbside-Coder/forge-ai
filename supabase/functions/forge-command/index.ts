@@ -58,6 +58,12 @@ Deno.serve(async (request) => {
       now?: string
       timezone?: string
       projects?: { id: string; name: string }[]
+      currentFocus?: {
+        workItemId?: string | null
+        title: string
+        reason: string
+        minutes: number
+      } | null
       history?: { role: 'user' | 'assistant'; body: string }[]
     }
     const message = body.message?.trim().slice(0, 4000) ?? ''
@@ -109,6 +115,9 @@ Use the conversation history only as context; the latest user request controls a
 {type:"delete_meeting",targetId:string}
 
 Create, update, move, complete, or delete actions only when explicitly requested. For an update or delete, target an exact id from the workspace snapshot. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. For a news or research request, use web results and identify it as current information. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.
+
+The current dashboard focus below is canonical. For status, priority, or “what should I work on?” questions, name this exact item and its reason rather than independently choosing a different task. Only challenge it if the user explicitly asks Forge to re-prioritize.
+Current dashboard focus: ${JSON.stringify(body.currentFocus ?? null)}.
 
 Live Forge workspace snapshot: ${JSON.stringify(workspaceSnapshot)}.
 

@@ -1,7 +1,8 @@
 import { Bot, Check, Send, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ForgeMark } from '@/components/brand/forge-mark'
 import { useAuth } from '@/features/auth/auth-provider'
+import { useAutopilot } from '@/features/autopilot/autopilot-store'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import { supabase } from '@/lib/supabase'
 
@@ -44,7 +45,8 @@ type ChatMessage = {
 
 export function ForgeChat() {
   const { user } = useAuth()
-  const { projects } = useWorkspace()
+  const { projects, workItems } = useWorkspace()
+  const { steps, focusSessions, aiDirection } = useAutopilot()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -52,6 +54,62 @@ export function ForgeChat() {
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const currentFocus = useMemo(() => {
+    const open = workItems.filter((item) => item.status !== 'done')
+    const focused = focusSessions.find((session) => !session.completedAt)
+    if (focused) {
+      const item = open.find((entry) => entry.id === focused.workItemId)
+      if (item)
+        return {
+          workItemId: item.id,
+          title: item.title,
+          reason: 'A focus block is already running for this item.',
+          minutes: focused.plannedMinutes,
+        }
+    }
+    const activeStep = steps.find(
+      (step) =>
+        step.status === 'in_progress' &&
+        (!step.workItemId || open.some((item) => item.id === step.workItemId)),
+    )
+    if (activeStep)
+      return {
+        workItemId: activeStep.workItemId,
+        title: activeStep.title,
+        reason: 'This is the active plan step on Home.',
+        minutes: activeStep.estimateMinutes,
+      }
+    const nextStep = steps.find(
+      (step) =>
+        step.status === 'todo' &&
+        (!step.workItemId || open.some((item) => item.id === step.workItemId)),
+    )
+    if (nextStep)
+      return {
+        workItemId: nextStep.workItemId,
+        title: nextStep.title,
+        reason: 'This is the next plan step on Home.',
+        minutes: nextStep.estimateMinutes,
+      }
+    const saved = aiDirection && open.find((item) => item.id === aiDirection.workItemId)
+    if (saved)
+      return {
+        workItemId: saved.id,
+        title: saved.title,
+        reason: aiDirection.reason,
+        minutes: aiDirection.minutes,
+      }
+    const candidate = [...open].sort((a, b) => focusScore(b) - focusScore(a))[0]
+    return candidate
+      ? {
+          workItemId: candidate.id,
+          title: candidate.title,
+          reason: 'This is Forge’s highest-leverage open item.',
+          minutes:
+            candidate.status === 'in_progress' || candidate.priority === 'critical' ? 45 : 25,
+        }
+      : null
+  }, [aiDirection, focusSessions, steps, workItems])
   useEffect(() => {
     if (!open || !supabase || !user) return
     void supabase
@@ -125,6 +183,7 @@ export function ForgeChat() {
         now: new Date().toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         projects: projects.map(({ id, name }) => ({ id, name })),
+        currentFocus,
         history: messages.slice(-12).map(({ role, body }) => ({ role, body })),
       },
     })
@@ -422,6 +481,16 @@ export function ForgeChat() {
       </button>
     </div>
   )
+}
+
+function focusScore(item: { priority: string; status: string; updatedAt: string }) {
+  const priority = { critical: 100, high: 70, medium: 40, low: 10 }[item.priority] ?? 0
+  const progress = item.status === 'in_progress' ? 24 : item.status === 'in_review' ? 15 : 0
+  const age = Math.min(
+    20,
+    Math.floor((Date.now() - new Date(item.updatedAt).getTime()) / 86_400_000),
+  )
+  return priority + progress + age
 }
 
 function actionLabel(action: Action) {
