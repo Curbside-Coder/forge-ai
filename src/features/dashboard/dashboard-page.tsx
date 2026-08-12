@@ -19,7 +19,7 @@ type UpcomingEvent = { id: string; title: string; starts_at: string; ends_at: st
 
 export function DashboardPage() {
   const { user } = useAuth()
-  const { workItems } = useWorkspace()
+  const { workItems, updateWorkItem } = useWorkspace()
   const { steps, focusSessions, aiDirection, createPlan, startFocus, completeFocus, askAi, error } =
     useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
@@ -137,18 +137,29 @@ export function DashboardPage() {
       specStepId: direction.step?.id ?? null,
       workItemId: direction.item?.id ?? null,
     })
+    if (direction.item?.status === 'backlog')
+      await updateWorkItem(direction.item.id, { status: 'in_progress' })
     setMessage(
       `Focus block started: ${direction.minutes} minutes. Keep this page open to track it.`,
     )
   }
-  const finishFocus = async () => {
+  const finishFocus = async (finishWorkItem: boolean) => {
     if (!activeFocus) return
     setIsCompletingFocus(true)
+    if (finishWorkItem && activeFocus.workItemId)
+      await updateWorkItem(activeFocus.workItemId, { status: 'done' })
     await completeFocus(activeFocus.id)
     setIsCompletingFocus(false)
-    setMessage(
-      'Focus block completed. Mark the work item done only if the outcome is genuinely finished.',
-    )
+    if (finishWorkItem) {
+      const next = [...workItems]
+        .filter((item) => item.status !== 'done' && item.id !== activeFocus.workItemId)
+        .sort((a, b) => score(b, now.getTime()) - score(a, now.getTime()))[0]
+      setMessage(
+        next
+          ? `Work item completed. Your next direction is “${next.title}.”`
+          : 'Work item completed. Your runway is clear.',
+      )
+    } else setMessage('Focus block ended. The work item remains open for later.')
   }
   const improveWithAi = async () => {
     setIsAskingAi(true)
@@ -186,12 +197,19 @@ export function DashboardPage() {
             </p>
           </div>
           <button
-            onClick={() => void finishFocus()}
+            onClick={() => void finishFocus(true)}
             disabled={isCompletingFocus}
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/[.1] px-3 py-2 text-sm text-zinc-100 transition hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             <CircleStop className="size-4" />
-            {isCompletingFocus ? 'Recording completion…' : 'Complete focus block'}
+            {isCompletingFocus ? 'Finishing…' : 'Finish work item & continue'}
+          </button>
+          <button
+            onClick={() => void finishFocus(false)}
+            disabled={isCompletingFocus}
+            className="mt-4 ml-2 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            End block, keep open
           </button>
         </section>
       )}
