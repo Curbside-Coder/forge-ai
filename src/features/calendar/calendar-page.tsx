@@ -56,6 +56,7 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null)
   const [dragged, setDragged] = useState<string | null>(null)
   const [hoverDay, setHoverDay] = useState<string | null>(null)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [view, setView] = useState<View>(
     () => (localStorage.getItem('forge.calendar.view') as View) || 'month',
   )
@@ -71,6 +72,7 @@ export function CalendarPage() {
     color: 'slate',
     preparation: '',
   })
+  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null
   useEffect(() => {
     localStorage.setItem('forge.calendar.view', view)
     localStorage.setItem('forge.calendar.anchor', anchor.toISOString())
@@ -144,6 +146,17 @@ export function CalendarPage() {
     await supabase.from('calendar_events').delete().eq('id', id)
     void load()
   }
+  const openNewEvent = (date: Date) => {
+    const start = new Date(date)
+    start.setHours(start.getHours() || 9, 0, 0, 0)
+    const end = new Date(start.getTime() + 30 * 60_000)
+    setForm((current) => ({
+      ...current,
+      startsAt: toDateTimeLocal(start),
+      endsAt: toDateTimeLocal(end),
+    }))
+    document.getElementById('calendar-event-title')?.focus()
+  }
   const attention = events
     .filter((e) => {
       const start = new Date(e.starts_at).getTime()
@@ -160,7 +173,7 @@ export function CalendarPage() {
             <button
               key={key}
               onClick={() => setView(key)}
-              className={`rounded-md px-2.5 py-1.5 text-xs ${view === key ? 'bg-white/[.12] text-white' : 'text-zinc-500 hover:text-zinc-200'}`}
+              className={`rounded-md px-2.5 py-1.5 text-xs ${view === key ? 'bg-white/[.12] text-white' : 'text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
             >
               {label}
             </button>
@@ -171,20 +184,29 @@ export function CalendarPage() {
         <button
           title="Previous period"
           onClick={() => navigate(-1)}
-          className="rounded-lg border border-white/[.08] p-2 text-zinc-400 hover:bg-white/[.05]"
+          className="rounded-lg border border-white/[.08] p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
         >
           <ChevronLeft className="size-4" />
         </button>
         <button
           onClick={() => setAnchor(new Date())}
-          className="rounded-lg border border-white/[.08] px-3 py-2 text-sm text-zinc-300 hover:bg-white/[.05]"
+          className="rounded-lg border border-white/[.08] px-3 py-2 text-sm text-zinc-300 hover:bg-[#29282b] hover:text-[#eee9df]"
         >
           Today
         </button>
+        <input
+          type="date"
+          aria-label="Jump to date"
+          value={toDateInput(anchor)}
+          onChange={(event) =>
+            event.target.value && setAnchor(new Date(`${event.target.value}T12:00:00`))
+          }
+          className="forge-date-input px-3 py-2 text-sm"
+        />
         <button
           title="Next period"
           onClick={() => navigate(1)}
-          className="rounded-lg border border-white/[.08] p-2 text-zinc-400 hover:bg-white/[.05]"
+          className="rounded-lg border border-white/[.08] p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -192,25 +214,25 @@ export function CalendarPage() {
         <div className="ml-auto flex overflow-hidden rounded-lg border border-white/[.08]">
           <button
             onClick={() => setAnchor(addMonths(anchor, -1))}
-            className="px-2 py-1 text-xs text-zinc-500 hover:bg-white/[.05]"
+            className="px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             ‹ Month
           </button>
           <button
             onClick={() => setAnchor(addMonths(anchor, 1))}
-            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-500 hover:bg-white/[.05]"
+            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             Month ›
           </button>
           <button
             onClick={() => setAnchor(addMonths(anchor, -3))}
-            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-500 hover:bg-white/[.05]"
+            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             ‹ Quarter
           </button>
           <button
             onClick={() => setAnchor(addMonths(anchor, 3))}
-            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-500 hover:bg-white/[.05]"
+            className="border-l border-white/[.08] px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             Quarter ›
           </button>
@@ -221,6 +243,7 @@ export function CalendarPage() {
         className="mt-5 grid gap-2 rounded-xl border border-white/[.07] bg-white/[.025] p-4 md:grid-cols-4"
       >
         <input
+          id="calendar-event-title"
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
           placeholder="Event title"
@@ -298,6 +321,8 @@ export function CalendarPage() {
             onHover={setHoverDay}
             onDrop={move}
             onDelete={remove}
+            onSelect={setSelectedEventId}
+            onEmptyCell={openNewEvent}
           />
         ) : (
           <div
@@ -315,6 +340,8 @@ export function CalendarPage() {
                 onDrop={move}
                 onDelete={remove}
                 compact={months.length > 1}
+                onSelect={setSelectedEventId}
+                onEmptyCell={openNewEvent}
               />
             ))}
           </div>
@@ -324,6 +351,21 @@ export function CalendarPage() {
         Click empty time while creating above. Drag an event to preview its drop day, then release
         to reschedule. Events show preparation notes before they are due.
       </p>
+      {selectedEvent && (
+        <EventDrawer
+          event={selectedEvent}
+          userId={user?.id ?? ''}
+          onClose={() => setSelectedEventId(null)}
+          onDelete={async () => {
+            await remove(selectedEvent.id)
+            setSelectedEventId(null)
+          }}
+          onSaved={async () => {
+            await load()
+            setSelectedEventId(null)
+          }}
+        />
+      )}
     </section>
   )
 }
@@ -337,6 +379,8 @@ function MonthCalendar({
   onDrop,
   onDelete,
   compact,
+  onSelect,
+  onEmptyCell,
 }: {
   month: Date
   events: CalendarEvent[]
@@ -347,6 +391,8 @@ function MonthCalendar({
   onDrop: (date: Date) => Promise<void>
   onDelete: (id: string) => Promise<void>
   compact: boolean
+  onSelect: (id: string) => void
+  onEmptyCell: (date: Date) => void
 }) {
   const first = startOfMonth(month),
     start = startOfWeek(first),
@@ -382,6 +428,7 @@ function MonthCalendar({
               }}
               onDragLeave={() => onHover(null)}
               onDrop={() => void onDrop(day)}
+              onClick={() => inMonth && dayEvents.length === 0 && onEmptyCell(day)}
               className={`min-h-28 border-b border-r border-white/[.05] p-1.5 ${!inMonth ? 'bg-black/25' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
             >
               {inMonth && (
@@ -398,6 +445,7 @@ function MonthCalendar({
                       onDrag={onDrag}
                       onDelete={onDelete}
                       compact={compact}
+                      onSelect={onSelect}
                     />
                   ))}
                 </>
@@ -419,6 +467,8 @@ function TimeCalendar({
   onHover,
   onDrop,
   onDelete,
+  onSelect,
+  onEmptyCell,
 }: {
   anchor: Date
   view: View
@@ -429,11 +479,13 @@ function TimeCalendar({
   onHover: (key: string | null) => void
   onDrop: (date: Date) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onSelect: (id: string) => void
+  onEmptyCell: (date: Date) => void
 }) {
   const start = view === 'week' ? startOfWeek(anchor) : startOfDay(anchor),
     days = Array.from({ length: view === 'week' ? 7 : 1 }, (_, i) => addDays(start, i))
   return (
-    <div className="min-w-[700px]">
+    <div className="relative min-w-[700px]">
       <div
         className="grid border-b border-white/[.07]"
         style={{ gridTemplateColumns: `3rem repeat(${days.length}, minmax(8rem,1fr))` }}
@@ -452,13 +504,13 @@ function TimeCalendar({
         className="grid"
         style={{ gridTemplateColumns: `3rem repeat(${days.length}, minmax(8rem,1fr))` }}
       >
-        {Array.from({ length: 12 }, (_, hour) => (
+        {Array.from({ length: 24 }, (_, hour) => (
           <>
             <p
               key={`h${hour}`}
               className="border-r border-t border-white/[.05] pr-2 pt-1 text-right text-[10px] text-zinc-600"
             >
-              {hour + 8}:00
+              {`${String(hour).padStart(2, '0')}:00`}
             </p>
             {days.map((day) => {
               const key = `${dateKey(day)}-${hour}`,
@@ -476,10 +528,17 @@ function TimeCalendar({
                   }}
                   onDragLeave={() => onHover(null)}
                   onDrop={() => void onDrop(day)}
-                  className={`min-h-16 border-r border-t border-white/[.05] p-1 ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
+                  onClick={() => block.length === 0 && onEmptyCell(withHour(day, hour))}
+                  className={`min-h-16 border-r border-t border-white/[.05] p-1 ${isWeekend(day) ? 'bg-sky-400/[.025]' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
                 >
                   {block.map((event) => (
-                    <EventBar key={event.id} event={event} onDrag={onDrag} onDelete={onDelete} />
+                    <EventBar
+                      key={event.id}
+                      event={event}
+                      onDrag={onDrag}
+                      onDelete={onDelete}
+                      onSelect={onSelect}
+                    />
                   ))}
                 </div>
               )
@@ -487,6 +546,7 @@ function TimeCalendar({
           </>
         ))}
       </div>
+      {view === 'day' && sameDay(anchor, new Date()) && <NowLine />}
     </div>
   )
 }
@@ -495,17 +555,23 @@ function EventBar({
   onDrag,
   onDelete,
   compact = false,
+  onSelect,
 }: {
   event: CalendarEvent
   onDrag: (id: string | null) => void
   onDelete: (id: string) => Promise<void>
   compact?: boolean
+  onSelect: (id: string) => void
 }) {
   return (
     <article
       draggable
       onDragStart={() => onDrag(event.id)}
       onDragEnd={() => onDrag(null)}
+      onClick={(click) => {
+        click.stopPropagation()
+        onSelect(event.id)
+      }}
       title={`${event.title}${event.description ? ` — ${event.description}` : ''}\nDrag to move. Click delete to remove.`}
       className={`group mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 ${tones[event.color] ?? tones.slate}`}
     >
@@ -524,7 +590,10 @@ function EventBar({
           )}
         </span>
         <button
-          onClick={() => void onDelete(event.id)}
+          onClick={(click) => {
+            click.stopPropagation()
+            void onDelete(event.id)
+          }}
           aria-label={`Delete ${event.title}`}
           className="shrink-0 opacity-0 transition group-hover:opacity-70 hover:text-rose-200"
         >
@@ -554,6 +623,172 @@ function EventIcon({ icon }: { icon: string }) {
     default:
       return <CalendarDays className={classes} />
   }
+}
+function NowLine() {
+  const now = new Date()
+  const top = 3.75 + now.getHours() * 4 + (now.getMinutes() / 60) * 4
+  return (
+    <div
+      className="pointer-events-none absolute left-12 right-0 z-10 flex items-center"
+      style={{ top: `${top}rem` }}
+    >
+      <span className="size-2 -translate-x-1/2 rounded-full bg-rose-300" />
+      <span className="h-px flex-1 bg-rose-300/80" />
+    </div>
+  )
+}
+function EventDrawer({
+  event,
+  userId,
+  onClose,
+  onDelete,
+  onSaved,
+}: {
+  event: CalendarEvent
+  userId: string
+  onClose: () => void
+  onDelete: () => Promise<void>
+  onSaved: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(event.title)
+  const [description, setDescription] = useState(event.description)
+  const [startsAt, setStartsAt] = useState(toDateTimeLocal(new Date(event.starts_at)))
+  const [endsAt, setEndsAt] = useState(toDateTimeLocal(new Date(event.ends_at)))
+  const [comment, setComment] = useState('')
+  const [comments, setComments] = useState<Array<{ id: string; body: string; created_at: string }>>(
+    [],
+  )
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (!supabase) return
+    void supabase
+      .from('calendar_event_comments')
+      .select('id,body,created_at')
+      .eq('event_id', event.id)
+      .order('created_at')
+      .then(({ data }) => setComments(data ?? []))
+  }, [event.id])
+  const save = async () => {
+    if (!supabase || !title.trim()) return
+    setSaving(true)
+    const { error } = await supabase
+      .from('calendar_events')
+      .update({
+        title: title.trim(),
+        description,
+        starts_at: new Date(startsAt).toISOString(),
+        ends_at: new Date(endsAt).toISOString(),
+      })
+      .eq('id', event.id)
+    setSaving(false)
+    if (!error) await onSaved()
+  }
+  const addComment = async () => {
+    if (!supabase || !userId || !comment.trim()) return
+    const { data } = await supabase
+      .from('calendar_event_comments')
+      .insert({ event_id: event.id, owner_id: userId, body: comment.trim() })
+      .select('id,body,created_at')
+      .single()
+    if (data) {
+      setComments((current) => [...current, data])
+      setComment('')
+    }
+  }
+  return (
+    <>
+      <button
+        aria-label="Close event details"
+        onClick={onClose}
+        className="fixed inset-0 z-20 cursor-default bg-black/45"
+      />
+      <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-xl overflow-y-auto bg-[#121216] p-5 shadow-2xl ring-1 ring-white/[0.08] sm:p-7">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm text-zinc-500">Calendar event</p>
+          <button
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Close
+          </button>
+        </div>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="mt-6 w-full bg-transparent text-2xl font-semibold outline-none"
+        />
+        <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+          When
+        </label>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <input
+            type="datetime-local"
+            value={startsAt}
+            onChange={(e) => setStartsAt(e.target.value)}
+            className="forge-date-input px-3 py-2 text-sm"
+          />
+          <input
+            type="datetime-local"
+            value={endsAt}
+            onChange={(e) => setEndsAt(e.target.value)}
+            className="forge-date-input px-3 py-2 text-sm"
+          />
+        </div>
+        <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Details
+        </label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={5}
+          className="mt-2 w-full rounded-xl bg-black/20 p-3 text-sm text-zinc-200 outline-none ring-1 ring-white/[.08]"
+        />
+        <div className="mt-6 flex gap-2">
+          <button
+            onClick={() => void save()}
+            disabled={saving}
+            className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+          <button
+            onClick={() => void onDelete()}
+            className="rounded-lg px-4 py-2 text-sm text-rose-300 hover:bg-rose-400/10"
+          >
+            Delete
+          </button>
+        </div>
+        <section className="mt-8 border-t border-white/[.07] pt-6">
+          <h2 className="font-medium">Comments</h2>
+          <div className="mt-3 space-y-2">
+            {comments.map((entry) => (
+              <p key={entry.id} className="rounded-lg bg-white/[.04] p-3 text-sm text-zinc-300">
+                {entry.body}
+                <span className="mt-1 block text-[10px] text-zinc-600">
+                  {new Date(entry.created_at).toLocaleString()}
+                </span>
+              </p>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void addComment())}
+              placeholder="Add a comment"
+              className="min-w-0 flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-white/[.08]"
+            />
+            <button
+              onClick={() => void addComment()}
+              className="rounded-lg bg-white/[.08] px-3 text-sm text-zinc-200 hover:bg-[#29282b]"
+            >
+              Add
+            </button>
+          </div>
+        </section>
+      </aside>
+    </>
+  )
 }
 function monthsFor(anchor: Date, view: View) {
   const current = startOfMonth(anchor)
@@ -617,4 +852,18 @@ function sameDay(a: Date, b: Date) {
 }
 function dateKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function toDateInput(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+function toDateTimeLocal(date: Date) {
+  return `${toDateInput(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+function withHour(day: Date, hour: number) {
+  const value = new Date(day)
+  value.setHours(hour, 0, 0, 0)
+  return value
+}
+function isWeekend(day: Date) {
+  return day.getDay() === 0 || day.getDay() === 6
 }

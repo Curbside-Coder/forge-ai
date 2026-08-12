@@ -14,9 +14,11 @@ type Suggestion = {
 }
 
 export function MeetingsPage() {
-  const { projects, meetings, addMeeting, addWorkItem } = useWorkspace()
+  const { projects, workItems, meetings, addMeeting, addWorkItem, addProject } = useWorkspace()
   const [title, setTitle] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [newProjectName, setNewProjectName] = useState('')
+  const [workItemId, setWorkItemId] = useState('')
   const [notes, setNotes] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [saved, setSaved] = useState<string[]>([])
@@ -31,6 +33,16 @@ export function MeetingsPage() {
   const notify = (message: string) => {
     setToast(message)
     window.setTimeout(() => setToast(null), 3600)
+  }
+  const createProjectHere = async () => {
+    const name = newProjectName.trim()
+    if (!name) return
+    const id = await addProject({ name, description: 'Created while capturing a meeting.' })
+    if (id) {
+      setProjectId(id)
+      setNewProjectName('')
+      notify(`Project “${name}” created and selected.`)
+    }
   }
   const generate = async () => {
     if (!notes.trim()) return
@@ -96,6 +108,7 @@ export function MeetingsPage() {
     if (!notes.trim()) return
     await addMeeting({
       projectId: projectId || null,
+      workItemId: workItemId || null,
       title: title.trim() || 'Untitled meeting',
       notes: notes.trim(),
       summary:
@@ -134,6 +147,36 @@ export function MeetingsPage() {
               ))}
             </select>
           </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              onKeyDown={(event) =>
+                event.key === 'Enter' && (event.preventDefault(), void createProjectHere())
+              }
+              placeholder="New project name (optional)"
+              className="min-w-0 flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm text-zinc-200 outline-none ring-1 ring-white/[.08]"
+            />
+            <button
+              onClick={() => void createProjectHere()}
+              type="button"
+              className="rounded-lg bg-white/[.08] px-3 text-sm text-zinc-200 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              Add project
+            </button>
+          </div>
+          <select
+            value={workItemId}
+            onChange={(event) => setWorkItemId(event.target.value)}
+            className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2 text-sm text-zinc-300 outline-none ring-1 ring-white/[.08]"
+          >
+            <option value="">Attach to a work item (optional)</option>
+            {workItems.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
           <label className="text-sm font-medium text-zinc-300" htmlFor="notes">
             Meeting notes
           </label>

@@ -39,7 +39,8 @@ const priorities: WorkItemPriority[] = ['critical', 'high', 'medium', 'low']
 const types: WorkItemType[] = ['task', 'bug', 'feature', 'idea', 'research', 'improvement']
 
 export function WorkItemsPage() {
-  const { workItems, projects, addWorkItem, updateWorkItem, source, error } = useWorkspace()
+  const { workItems, projects, addWorkItem, updateWorkItem, addProject, source, error } =
+    useWorkspace()
   const [view, setView] = useState<'list' | 'board'>('board')
   const [activeStatus, setActiveStatus] = useState<WorkItemStatus | 'all'>('all')
   const [isCreating, setIsCreating] = useState(false)
@@ -49,6 +50,7 @@ export function WorkItemsPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [newProjectName, setNewProjectName] = useState('')
   const [priority, setPriority] = useState<WorkItemPriority>('medium')
   const [type, setType] = useState<WorkItemType>('task')
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -62,7 +64,7 @@ export function WorkItemsPage() {
   const labels = useMemo(() => ticketLabels(workItems), [workItems])
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!title.trim()) return
+    if (!title.trim() || !projectId) return
     addWorkItem({
       title: title.trim(),
       description: description.trim(),
@@ -84,6 +86,15 @@ export function WorkItemsPage() {
     window.history.pushState({}, '', `/work-items?item=${encodeURIComponent(id)}`)
     setSelectedId(id)
   }
+  const createProjectHere = async () => {
+    const name = newProjectName.trim()
+    if (!name) return
+    const id = await addProject({ name, description: 'Created while adding a work item.' })
+    if (id) {
+      setProjectId(id)
+      setNewProjectName('')
+    }
+  }
   const closeItem = () => {
     window.history.pushState({}, '', '/work-items')
     setSelectedId(null)
@@ -98,7 +109,6 @@ export function WorkItemsPage() {
         </div>
         <button
           onClick={openForm}
-          disabled={projects.length === 0}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-white"
         >
           <Plus className="size-4" />
@@ -141,12 +151,31 @@ export function WorkItemsPage() {
               onChange={(event) => setProjectId(event.target.value)}
               className="rounded-lg bg-black/20 px-3 py-2.5 text-zinc-300 outline-none ring-1 ring-white/[0.08]"
             >
+              <option value="">Select a project</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name}
                 </option>
               ))}
             </select>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              onKeyDown={(event) =>
+                event.key === 'Enter' && (event.preventDefault(), void createProjectHere())
+              }
+              placeholder="New project name"
+              className="min-w-0 flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm text-zinc-200 outline-none ring-1 ring-white/[.08]"
+            />
+            <button
+              type="button"
+              onClick={() => void createProjectHere()}
+              className="rounded-lg bg-white/[.08] px-3 text-sm text-zinc-200 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              Add project
+            </button>
           </div>
           <textarea
             value={description}
@@ -275,11 +304,6 @@ export function WorkItemsPage() {
             />
           </aside>
         </>
-      )}
-      {projects.length === 0 && source === 'supabase' && (
-        <p className="mt-5 rounded-2xl bg-white/[0.025] px-6 py-10 text-center text-sm text-zinc-500">
-          Create a project first, then add its work items.
-        </p>
       )}
     </section>
   )

@@ -101,7 +101,7 @@ type WorkspaceContextValue = WorkspaceSnapshot & {
   error: string | null
   addWorkItem: (item: NewWorkItem) => Promise<void>
   updateWorkItem: (id: string, changes: Partial<WorkItem>) => Promise<void>
-  addProject: (project: Pick<Project, 'name' | 'description'>) => Promise<void>
+  addProject: (project: Pick<Project, 'name' | 'description'>) => Promise<string | null>
   updateProject: (id: string, changes: Pick<Project, 'name' | 'description'>) => Promise<void>
   deleteProject: (id: string) => Promise<void>
   deleteWorkItem: (id: string) => Promise<void>
@@ -109,7 +109,9 @@ type WorkspaceContextValue = WorkspaceSnapshot & {
   addComment: (workItemId: string, body: string) => Promise<void>
   addChecklistItem: (workItemId: string, body: string) => Promise<void>
   updateChecklistItem: (id: string, completed: boolean) => Promise<void>
-  addMeeting: (meeting: Pick<Meeting, 'projectId' | 'title' | 'notes' | 'summary'>) => Promise<void>
+  addMeeting: (
+    meeting: Pick<Meeting, 'projectId' | 'workItemId' | 'title' | 'notes' | 'summary'>,
+  ) => Promise<void>
 }
 type DbProject = { id: string; name: string; description: string; created_at: string }
 type DbWorkItem = {
@@ -140,6 +142,7 @@ type DbChecklistItem = {
 type DbMeeting = {
   id: string
   project_id: string | null
+  work_item_id: string | null
   title: string
   notes: string
   summary: string | null
@@ -182,6 +185,7 @@ const mapChecklistItem = (item: DbChecklistItem): ChecklistItem => ({
 const mapMeeting = (meeting: DbMeeting): Meeting => ({
   id: meeting.id,
   projectId: meeting.project_id,
+  workItemId: meeting.work_item_id,
   title: meeting.title,
   notes: meeting.notes,
   summary: meeting.summary,
@@ -271,12 +275,13 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
 
   const addProject = async (project: Pick<Project, 'name' | 'description'>) => {
     if (!supabase || source !== 'supabase' || !userId) {
+      const id = crypto.randomUUID()
       const next = {
         ...snapshot,
         projects: [
           ...snapshot.projects,
           {
-            id: crypto.randomUUID(),
+            id,
             name: project.name,
             description: project.description,
             color: 'zinc',
@@ -285,7 +290,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
         ],
       }
       saveLocal(next)
-      return
+      return id
     }
     const { data, error: insertError } = await supabase
       .from('projects')
@@ -294,12 +299,13 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       .single()
     if (insertError) {
       setError(insertError.message)
-      return
+      return null
     }
     setSnapshot((current) => ({
       ...current,
       projects: [...current.projects, mapProject(data as DbProject)],
     }))
+    return data.id
   }
   const addWorkItem = async (item: NewWorkItem) => {
     if (!supabase || source !== 'supabase' || !userId) {
@@ -548,7 +554,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
     }))
   }
   const addMeeting = async (
-    meeting: Pick<Meeting, 'projectId' | 'title' | 'notes' | 'summary'>,
+    meeting: Pick<Meeting, 'projectId' | 'workItemId' | 'title' | 'notes' | 'summary'>,
   ) => {
     if (!supabase || source !== 'supabase' || !userId) {
       const nextMeeting: Meeting = {
@@ -563,6 +569,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       .from('meetings')
       .insert({
         project_id: meeting.projectId,
+        work_item_id: meeting.workItemId ?? null,
         created_by: userId,
         title: meeting.title,
         notes: meeting.notes,

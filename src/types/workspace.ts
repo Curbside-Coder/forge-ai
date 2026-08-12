@@ -98,6 +98,7 @@ export type ChecklistItem = {
 export type Meeting = {
   id: string
   projectId: string | null
+  workItemId?: string | null
   title: string
   notes: string
   summary: string | null

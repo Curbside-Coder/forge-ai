@@ -119,13 +119,13 @@ export function AppShell({ children }: PropsWithChildren) {
           <button
             onClick={() => setIsNavOpen(true)}
             aria-label="Open navigation"
-            className="grid size-10 place-items-center rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-white lg:hidden"
+            className="grid size-10 place-items-center rounded-lg text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df] lg:hidden"
           >
             <Menu className="size-5" />
           </button>
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="mr-auto flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
+            className="mr-auto flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             <Search className="size-4" />
             <span>Search</span>
@@ -138,7 +138,7 @@ export function AppShell({ children }: PropsWithChildren) {
               <button
                 onClick={() => setIsNotificationsOpen((value) => !value)}
                 aria-label="Notifications"
-                className="relative text-zinc-500 transition hover:text-white"
+                className="relative rounded-md p-1 text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
               >
                 <Bell className="size-4" />
                 {attention.length > 0 && (
@@ -157,7 +157,7 @@ export function AppShell({ children }: PropsWithChildren) {
                       <a
                         key={item.id}
                         href={`/work-items?item=${item.id}`}
-                        className="block rounded-lg px-3 py-3 hover:bg-white/[0.06]"
+                        className="block rounded-lg px-3 py-3 text-zinc-200 hover:bg-[#29282b] hover:text-[#eee9df]"
                       >
                         <span className="block text-sm text-zinc-200">{item.title}</span>
                         <span className="mt-1 block text-xs text-amber-300">
@@ -191,7 +191,7 @@ export function AppShell({ children }: PropsWithChildren) {
                   <Link
                     to="/settings"
                     onClick={() => setIsAccountOpen(false)}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
                   >
                     <Settings className="size-4" /> Account settings
                   </Link>
@@ -238,7 +238,7 @@ export function AppShell({ children }: PropsWithChildren) {
               <button
                 onClick={() => setIsNavOpen(false)}
                 aria-label="Close navigation"
-                className="p-2 text-zinc-500 hover:text-white"
+                className="rounded-md p-2 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
               >
                 <X className="size-5" />
               </button>
@@ -289,7 +289,7 @@ export function AppShell({ children }: PropsWithChildren) {
               <button
                 onClick={closeSearch}
                 aria-label="Close search"
-                className="p-2 text-zinc-500 hover:text-white"
+                className="rounded-md p-2 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
               >
                 <X className="size-4" />
               </button>
@@ -309,7 +309,7 @@ export function AppShell({ children }: PropsWithChildren) {
                     key={`${result.kind}-${result.id}`}
                     onClick={closeSearch}
                     href={result.href}
-                    className="block rounded-xl px-3 py-3 hover:bg-white/[0.06]"
+                    className="block rounded-xl px-3 py-3 text-zinc-200 hover:bg-[#29282b] hover:text-[#eee9df]"
                   >
                     <span className="block text-sm text-zinc-200">{result.label}</span>
                     <span className="mt-1 block text-xs text-zinc-600">{result.kind}</span>

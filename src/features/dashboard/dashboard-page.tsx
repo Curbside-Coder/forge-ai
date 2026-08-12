@@ -17,6 +17,9 @@ export function DashboardPage() {
   const [isAskingAi, setIsAskingAi] = useState(false)
   const [now] = useState(() => new Date())
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
+  const [serviceStatus, setServiceStatus] = useState<'checking' | 'connected' | 'offline'>(
+    'checking',
+  )
   const isOpenStep = (workItemId: string | null) => {
     if (!workItemId) return true
     return workItems.find((item) => item.id === workItemId)?.status !== 'done'
@@ -79,6 +82,15 @@ export function DashboardPage() {
       .order('starts_at')
       .limit(4)
       .then(({ data }) => setUpcomingEvents((data ?? []) as UpcomingEvent[]))
+  }, [user])
+  useEffect(() => {
+    if (!supabase || !user) {
+      const timer = window.setTimeout(() => setServiceStatus('offline'), 0)
+      return () => window.clearTimeout(timer)
+    }
+    void supabase.auth
+      .getSession()
+      .then(({ error: statusError }) => setServiceStatus(statusError ? 'offline' : 'connected'))
   }, [user])
   const generatePlan = async () => {
     if (!direction?.item) return
@@ -211,6 +223,19 @@ export function DashboardPage() {
           <p className="mt-2 text-sm leading-6 text-zinc-500">
             {workItems.filter((item) => item.status !== 'done').length} open work items stay in the
             background. You only need to decide whether to start this one.
+          </p>
+        </section>
+        <section className="rounded-2xl bg-white/[0.035] p-6">
+          <span
+            className={`block size-2 rounded-full ${serviceStatus === 'connected' ? 'bg-emerald-300' : serviceStatus === 'offline' ? 'bg-rose-300' : 'bg-amber-300'}`}
+          />
+          <h2 className="mt-4 font-medium">Forge status</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            {serviceStatus === 'connected'
+              ? 'Workspace, calendar, and AI connection are available.'
+              : serviceStatus === 'offline'
+                ? 'Forge is using local-only data or needs a connection.'
+                : 'Checking your private Forge connection…'}
           </p>
         </section>
       </div>
