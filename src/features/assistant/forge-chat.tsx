@@ -1,5 +1,5 @@
 import { Bot, Check, Send, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ForgeMark } from '@/components/brand/forge-mark'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
@@ -54,6 +54,8 @@ export function ForgeChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isSessionsOpen, setIsSessionsOpen] = useState(false)
+  const latestMessageRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLInputElement | null>(null)
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -160,6 +162,13 @@ export function ForgeChat() {
         )
       })
   }, [open, sessionId, user])
+  useEffect(() => {
+    if (!open || messages.length === 0) return
+    const timer = window.setTimeout(() => {
+      latestMessageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [loading, messages.length, open])
   const createSession = async () => {
     if (!supabase || !user) return null
     const { data, error: createError } = await supabase
@@ -221,6 +230,7 @@ export function ForgeChat() {
       activeSessionId = created.id
     }
     setMessage('')
+    window.setTimeout(() => composerRef.current?.focus(), 0)
     setLoading(true)
     setError(null)
     setActions([])
@@ -513,9 +523,10 @@ export function ForgeChat() {
                 API docs” or “Add a calendar event tomorrow at 10 AM for 30 minutes.”
               </p>
             )}
-            {messages.map((entry) => (
+            {messages.map((entry, index) => (
               <div
                 key={entry.id}
+                ref={index === messages.length - 1 ? latestMessageRef : undefined}
                 className={
                   entry.role === 'user'
                     ? 'ml-8 rounded-xl bg-violet-400/15 p-3 text-zinc-100'
@@ -561,6 +572,7 @@ export function ForgeChat() {
           </div>
           <div className="flex gap-2 border-t border-white/[0.07] p-3">
             <input
+              ref={composerRef}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => {
