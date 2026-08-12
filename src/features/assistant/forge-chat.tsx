@@ -6,7 +6,20 @@ import { useWorkspace } from '@/features/workspace/workspace-store'
 import { supabase } from '@/lib/supabase'
 
 type Action = {
-  type: 'create_calendar_event' | 'create_project' | 'create_work_item' | 'create_meeting'
+  type:
+    | 'create_calendar_event'
+    | 'create_project'
+    | 'create_work_item'
+    | 'create_meeting'
+    | 'update_calendar_event'
+    | 'delete_calendar_event'
+    | 'update_work_item'
+    | 'delete_work_item'
+    | 'update_project'
+    | 'delete_project'
+    | 'update_meeting'
+    | 'delete_meeting'
+  targetId?: string
   title?: string
   name?: string
   description?: string
@@ -17,6 +30,7 @@ type Action = {
   workType?: 'task' | 'bug' | 'feature' | 'idea' | 'research' | 'improvement'
   projectId?: string
   projectName?: string
+  status?: 'backlog' | 'in_progress' | 'in_review' | 'done'
 }
 type Usage = { inputTokens: number; outputTokens: number; totalTokens: number }
 type ChatMessage = {
@@ -146,6 +160,86 @@ export function ForgeChat() {
     try {
       let defaultProjectId = projects[0]?.id
       for (const action of actions) {
+        if (action.type === 'update_calendar_event' && action.targetId) {
+          const changes: Record<string, string> = {}
+          if (action.title) changes.title = action.title
+          if (action.description !== undefined) changes.description = action.description
+          if (action.startsAt) changes.starts_at = action.startsAt
+          if (action.endsAt) changes.ends_at = action.endsAt
+          const { error: updateError } = await supabase
+            .from('calendar_events')
+            .update(changes)
+            .eq('id', action.targetId)
+          if (updateError) throw updateError
+          continue
+        }
+        if (action.type === 'delete_calendar_event' && action.targetId) {
+          const { error: deleteError } = await supabase
+            .from('calendar_events')
+            .delete()
+            .eq('id', action.targetId)
+          if (deleteError) throw deleteError
+          continue
+        }
+        if (action.type === 'update_work_item' && action.targetId) {
+          const changes: Record<string, string> = {}
+          if (action.title) changes.title = action.title
+          if (action.description !== undefined) changes.description = action.description
+          if (action.priority) changes.priority = action.priority
+          if (action.status) changes.status = action.status
+          const { error: updateError } = await supabase
+            .from('work_items')
+            .update(changes)
+            .eq('id', action.targetId)
+          if (updateError) throw updateError
+          continue
+        }
+        if (action.type === 'delete_work_item' && action.targetId) {
+          const { error: deleteError } = await supabase
+            .from('work_items')
+            .delete()
+            .eq('id', action.targetId)
+          if (deleteError) throw deleteError
+          continue
+        }
+        if (action.type === 'update_project' && action.targetId) {
+          const changes: Record<string, string> = {}
+          if (action.name) changes.name = action.name
+          if (action.description !== undefined) changes.description = action.description
+          const { error: updateError } = await supabase
+            .from('projects')
+            .update(changes)
+            .eq('id', action.targetId)
+          if (updateError) throw updateError
+          continue
+        }
+        if (action.type === 'delete_project' && action.targetId) {
+          const { error: deleteError } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', action.targetId)
+          if (deleteError) throw deleteError
+          continue
+        }
+        if (action.type === 'update_meeting' && action.targetId) {
+          const changes: Record<string, string> = {}
+          if (action.title) changes.title = action.title
+          if (action.notes !== undefined) changes.notes = action.notes
+          const { error: updateError } = await supabase
+            .from('meetings')
+            .update(changes)
+            .eq('id', action.targetId)
+          if (updateError) throw updateError
+          continue
+        }
+        if (action.type === 'delete_meeting' && action.targetId) {
+          const { error: deleteError } = await supabase
+            .from('meetings')
+            .delete()
+            .eq('id', action.targetId)
+          if (deleteError) throw deleteError
+          continue
+        }
         if (action.type === 'create_project' && action.name) {
           const { data, error: insertError } = await supabase
             .from('projects')
@@ -280,7 +374,7 @@ export function ForgeChat() {
                     key={`${action.type}-${index}`}
                     className="rounded-lg bg-violet-400/[0.08] px-3 py-2 text-xs text-violet-100"
                   >
-                    {action.type.replaceAll('_', ' ')}: {action.title ?? action.name}
+                    {actionLabel(action)}
                   </p>
                 ))}
                 <button
@@ -328,4 +422,9 @@ export function ForgeChat() {
       </button>
     </div>
   )
+}
+
+function actionLabel(action: Action) {
+  const name = action.title ?? action.name ?? action.targetId?.slice(0, 8) ?? 'item'
+  return `${action.type.replaceAll('_', ' ')}: ${name}`
 }

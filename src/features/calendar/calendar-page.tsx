@@ -1,4 +1,18 @@
-import { CalendarPlus, ChevronLeft, ChevronRight, GripVertical, Trash2 } from 'lucide-react'
+import {
+  BriefcaseBusiness,
+  Cake,
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Church,
+  GripVertical,
+  HeartHandshake,
+  HeartPulse,
+  Plane,
+  Trash2,
+  Utensils,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { supabase } from '@/lib/supabase'
@@ -27,8 +41,11 @@ const tones: Record<string, string> = {
   sky: 'bg-sky-400/15 text-sky-100 ring-sky-300/20',
   emerald: 'bg-emerald-400/15 text-emerald-100 ring-emerald-300/20',
   amber: 'bg-amber-400/15 text-amber-100 ring-amber-300/20',
-  rose: 'bg-rose-400/15 text-rose-100 ring-rose-300/20',
-  violet: 'bg-violet-400/15 text-violet-100 ring-violet-300/20',
+  rust: 'bg-orange-400/15 text-orange-100 ring-orange-300/20',
+  indigo: 'bg-indigo-400/15 text-indigo-100 ring-indigo-300/20',
+  // Keep existing events readable after the palette change.
+  rose: 'bg-orange-400/15 text-orange-100 ring-orange-300/20',
+  violet: 'bg-indigo-400/15 text-indigo-100 ring-indigo-300/20',
 }
 const icons = ['calendar', 'work', 'travel', 'food', 'family', 'church', 'health', 'birthday']
 
@@ -252,7 +269,7 @@ export function CalendarPage() {
             onChange={(e) => setForm({ ...form, color: e.target.value })}
             className="forge-select min-w-0 flex-1 px-2 text-sm"
           >
-            {Object.keys(tones).map((color) => (
+            {['slate', 'sky', 'emerald', 'amber', 'rust', 'indigo'].map((color) => (
               <option key={color}>{color}</option>
             ))}
           </select>
@@ -297,6 +314,7 @@ export function CalendarPage() {
                 onHover={setHoverDay}
                 onDrop={move}
                 onDelete={remove}
+                compact={months.length > 1}
               />
             ))}
           </div>
@@ -318,6 +336,7 @@ function MonthCalendar({
   onHover,
   onDrop,
   onDelete,
+  compact,
 }: {
   month: Date
   events: CalendarEvent[]
@@ -327,6 +346,7 @@ function MonthCalendar({
   onHover: (day: string | null) => void
   onDrop: (date: Date) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  compact: boolean
 }) {
   const first = startOfMonth(month),
     start = startOfWeek(first),
@@ -362,16 +382,26 @@ function MonthCalendar({
               }}
               onDragLeave={() => onHover(null)}
               onDrop={() => void onDrop(day)}
-              className={`min-h-28 border-b border-r border-white/[.05] p-1.5 ${!inMonth ? 'bg-black/10 text-zinc-700' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
+              className={`min-h-28 border-b border-r border-white/[.05] p-1.5 ${!inMonth ? 'bg-black/25' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
             >
-              <p
-                className={`mb-1 grid size-6 place-items-center rounded-full text-xs ${sameDay(day, new Date()) ? 'bg-sky-300 text-slate-950' : inMonth ? 'text-zinc-400' : 'text-zinc-700'}`}
-              >
-                {day.getDate()}
-              </p>
-              {dayEvents.map((event) => (
-                <EventBar key={event.id} event={event} onDrag={onDrag} onDelete={onDelete} />
-              ))}
+              {inMonth && (
+                <>
+                  <p
+                    className={`mb-1 grid size-6 place-items-center rounded-full text-xs ${sameDay(day, new Date()) ? 'bg-sky-300 text-slate-950' : 'text-zinc-400'}`}
+                  >
+                    {day.getDate()}
+                  </p>
+                  {dayEvents.map((event) => (
+                    <EventBar
+                      key={event.id}
+                      event={event}
+                      onDrag={onDrag}
+                      onDelete={onDelete}
+                      compact={compact}
+                    />
+                  ))}
+                </>
+              )}
             </div>
           )
         })}
@@ -464,42 +494,66 @@ function EventBar({
   event,
   onDrag,
   onDelete,
+  compact = false,
 }: {
   event: CalendarEvent
   onDrag: (id: string | null) => void
   onDelete: (id: string) => Promise<void>
+  compact?: boolean
 }) {
   return (
     <article
       draggable
       onDragStart={() => onDrag(event.id)}
       onDragEnd={() => onDrag(null)}
-      title="Drag to move. Click delete to remove."
-      className={`mb-1 cursor-grab rounded-md px-1.5 py-1 text-[10px] ring-1 ${tones[event.color] ?? tones.slate}`}
+      title={`${event.title}${event.description ? ` — ${event.description}` : ''}\nDrag to move. Click delete to remove.`}
+      className={`group mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 ${tones[event.color] ?? tones.slate}`}
     >
-      <div className="flex items-start gap-1">
+      <div className="flex min-w-0 items-start gap-1">
         <GripVertical className="mt-px size-3 shrink-0 opacity-50" />
-        <span className="min-w-0 flex-1">
-          <span className="font-medium">
-            {event.icon} {event.title}
-          </span>
-          <span className="block opacity-65">
-            {new Date(event.starts_at).toLocaleTimeString([], {
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
-          </span>
+        <EventIcon icon={event.icon} />
+        <span className="min-w-0 flex-1 overflow-hidden">
+          <span className="block truncate font-medium">{event.title}</span>
+          {!compact && (
+            <span className="block opacity-65">
+              {new Date(event.starts_at).toLocaleTimeString([], {
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+            </span>
+          )}
         </span>
         <button
           onClick={() => void onDelete(event.id)}
           aria-label={`Delete ${event.title}`}
-          className="opacity-50 hover:text-rose-200"
+          className="shrink-0 opacity-0 transition group-hover:opacity-70 hover:text-rose-200"
         >
           <Trash2 className="size-3" />
         </button>
       </div>
     </article>
   )
+}
+function EventIcon({ icon }: { icon: string }) {
+  const classes = 'mt-px size-3 shrink-0 opacity-80'
+  switch (icon) {
+    case 'work':
+      return <BriefcaseBusiness className={classes} />
+    case 'travel':
+      return <Plane className={classes} />
+    case 'food':
+      return <Utensils className={classes} />
+    case 'family':
+      return <HeartHandshake className={classes} />
+    case 'church':
+      return <Church className={classes} />
+    case 'health':
+      return <HeartPulse className={classes} />
+    case 'birthday':
+      return <Cake className={classes} />
+    default:
+      return <CalendarDays className={classes} />
+  }
 }
 function monthsFor(anchor: Date, view: View) {
   const current = startOfMonth(anchor)

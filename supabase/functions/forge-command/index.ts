@@ -99,14 +99,26 @@ Use the conversation history only as context; the latest user request controls a
 {type:"create_project",name:string,description:string}
 {type:"create_work_item",title:string,description:string,priority:"critical"|"high"|"medium"|"low",workType:"task"|"bug"|"feature"|"idea"|"research"|"improvement",projectId?:string,projectName?:string}
 {type:"create_meeting",title:string,notes:string,projectId?:string}
+{type:"update_calendar_event",targetId:string,title?:string,description?:string,startsAt?:string,endsAt?:string}
+{type:"delete_calendar_event",targetId:string}
+{type:"update_work_item",targetId:string,title?:string,description?:string,status?:"backlog"|"in_progress"|"in_review"|"done",priority?:"critical"|"high"|"medium"|"low"}
+{type:"delete_work_item",targetId:string}
+{type:"update_project",targetId:string,name?:string,description?:string}
+{type:"delete_project",targetId:string}
+{type:"update_meeting",targetId:string,title?:string,notes?:string}
+{type:"delete_meeting",targetId:string}
 
-Create actions only when explicitly requested. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.
+Create, update, move, complete, or delete actions only when explicitly requested. For an update or delete, target an exact id from the workspace snapshot. For event requests, use ISO 8601 timestamps with an offset; infer a 30-minute duration only when no duration is supplied. If a date or time is ambiguous or missing, do not create an action: ask one concise question in message. For a news or research request, use web results and identify it as current information. Never claim to access email, Gmail, external calendars, or send messages. Do not invent facts, dates, attendees, commitments, or actions. Current time: ${body.now}. User timezone: ${body.timezone}. Existing projects: ${JSON.stringify(body.projects ?? [])}.
 
 Live Forge workspace snapshot: ${JSON.stringify(workspaceSnapshot)}.
 
 Conversation history: ${JSON.stringify(history)}
 
 User request: ${message}`
+    const useWebSearch =
+      /\b(news|latest|today|current|happening|search|look\s*up|lookup|who is|what is|when did|where is)\b/i.test(
+        message,
+      )
     const openai = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -115,6 +127,7 @@ User request: ${message}`
         reasoning: { effort: 'low' },
         text: { verbosity: 'low' },
         input: prompt,
+        ...(useWebSearch ? { tools: [{ type: 'web_search' }] } : {}),
       }),
     })
     if (!openai.ok)
