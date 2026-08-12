@@ -82,6 +82,7 @@ export function ForgeChat() {
   const composerRef = useRef<HTMLInputElement | null>(null)
   const recognitionRef = useRef<Recognition | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const speechCacheRef = useRef(new Map<string, string>())
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -337,16 +338,20 @@ export function ForgeChat() {
     audioRef.current?.pause()
     window.speechSynthesis.cancel()
     setIsSpeaking(true)
+    const cacheKey = `${sessionId ?? 'default'}:${text}`
+    const cachedAudio = speechCacheRef.current.get(cacheKey)
+    if (cachedAudio) {
+      playAudio(cachedAudio)
+      return
+    }
     if (supabase) {
       const { data, error: speechError } = await supabase.functions.invoke('forge-speech', {
         body: { text },
       })
       if (!speechError && data?.audioBase64) {
-        const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`)
-        audioRef.current = audio
-        audio.onended = () => setIsSpeaking(false)
-        audio.onerror = () => setIsSpeaking(false)
-        await audio.play().catch(() => setIsSpeaking(false))
+        const audioUrl = `data:audio/mpeg;base64,${data.audioBase64}`
+        speechCacheRef.current.set(cacheKey, audioUrl)
+        playAudio(audioUrl)
         return
       }
     }
@@ -367,6 +372,13 @@ export function ForgeChat() {
     utterance.onend = () => setIsSpeaking(false)
     utterance.onerror = () => setIsSpeaking(false)
     window.speechSynthesis.speak(utterance)
+  }
+  const playAudio = (source: string) => {
+    const audio = new Audio(source)
+    audioRef.current = audio
+    audio.onended = () => setIsSpeaking(false)
+    audio.onerror = () => setIsSpeaking(false)
+    void audio.play().catch(() => setIsSpeaking(false))
   }
   const listen = () => {
     if (isListening) {
