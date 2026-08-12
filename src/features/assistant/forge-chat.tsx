@@ -42,6 +42,7 @@ type ChatMessage = {
   usage: Usage | null
   createdAt: string
 }
+type ChatSession = { id: string; title: string; createdAt: string; updatedAt: string }
 
 export function ForgeChat() {
   const { user } = useAuth()
@@ -50,6 +51,9 @@ export function ForgeChat() {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isSessionsOpen, setIsSessionsOpen] = useState(false)
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -113,8 +117,30 @@ export function ForgeChat() {
   useEffect(() => {
     if (!open || !supabase || !user) return
     void supabase
+      .from('forge_chat_sessions')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .then(({ data, error: loadError }) => {
+        if (loadError) {
+          setError('Chat sessions will be available after the latest database migration.')
+          return
+        }
+        const loaded = (data ?? []).map((row) => ({
+          id: row.id,
+          title: row.title,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }))
+        setSessions(loaded)
+        setSessionId((current) => current ?? loaded[0]?.id ?? null)
+      })
+  }, [open, user])
+  useEffect(() => {
+    if (!open || !supabase || !user || !sessionId) return
+    void supabase
       .from('forge_chat_messages')
       .select('*')
+      .eq('session_id', sessionId)
       .order('created_at', { ascending: false })
       .limit(30)
       .then(({ data, error: loadError }) => {
@@ -133,13 +159,40 @@ export function ForgeChat() {
           })),
         )
       })
-  }, [open, user])
-  const remember = async (entry: Omit<ChatMessage, 'id' | 'createdAt'>) => {
+  }, [open, sessionId, user])
+  const createSession = async () => {
+    if (!supabase || !user) return null
+    const { data, error: createError } = await supabase
+      .from('forge_chat_sessions')
+      .insert({ owner_id: user.id, title: 'New chat' })
+      .select()
+      .single()
+    if (createError) {
+      setError(createError.message)
+      return null
+    }
+    const session = {
+      id: data.id,
+      title: data.title,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    }
+    setSessions((current) => [session, ...current])
+    setSessionId(session.id)
+    setMessages([])
+    setIsSessionsOpen(false)
+    return session
+  }
+  const remember = async (
+    entry: Omit<ChatMessage, 'id' | 'createdAt'>,
+    targetSessionId = sessionId,
+  ) => {
     if (!supabase || !user) return null
     const { data } = await supabase
       .from('forge_chat_messages')
       .insert({
         owner_id: user.id,
+        session_id: targetSessionId,
         role: entry.role,
         body: entry.body,
         actions: entry.actions,
@@ -161,6 +214,12 @@ export function ForgeChat() {
   const ask = async () => {
     const request = message.trim()
     if (!request || !supabase) return
+    let activeSessionId = sessionId
+    if (!activeSessionId) {
+      const created = await createSession()
+      if (!created) return
+      activeSessionId = created.id
+    }
     setMessage('')
     setLoading(true)
     setError(null)
@@ -174,9 +233,26 @@ export function ForgeChat() {
       createdAt: new Date().toISOString(),
     }
     setMessages((current) => [...current, optimistic])
-    const saved = await remember({ role: 'user', body: request, actions: [], usage: null })
+    const saved = await remember(
+      { role: 'user', body: request, actions: [], usage: null },
+      activeSessionId,
+    )
     if (saved)
       setMessages((current) => current.map((entry) => (entry.id === optimistic.id ? saved : entry)))
+    const selectedSession = sessions.find((session) => session.id === activeSessionId)
+    if (selectedSession?.title === 'New chat') {
+      const title = request.slice(0, 48)
+      void supabase.from('forge_chat_sessions').update({ title }).eq('id', activeSessionId)
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === activeSessionId ? { ...session, title } : session,
+        ),
+      )
+    }
+    void supabase
+      .from('forge_chat_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', activeSessionId)
     const { data, error: requestError } = await supabase.functions.invoke('forge-command', {
       body: {
         message: request,
@@ -195,12 +271,10 @@ export function ForgeChat() {
     const nextActions = (data.actions ?? []) as Action[]
     const usage = data.usage as Usage | null
     setActions(nextActions)
-    const assistant = await remember({
-      role: 'assistant',
-      body: data.message,
-      actions: nextActions,
-      usage,
-    })
+    const assistant = await remember(
+      { role: 'assistant', body: data.message, actions: nextActions, usage },
+      activeSessionId,
+    )
     setMessages((current) => [
       ...current,
       assistant ?? {
@@ -389,11 +463,47 @@ export function ForgeChat() {
       {open && (
         <section className="mb-3 flex h-[min(38rem,calc(100vh-6rem))] w-[min(25rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl bg-[#19191d] shadow-2xl ring-1 ring-white/[0.1]">
           <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
-            <p className="inline-flex items-center gap-2 text-sm font-medium">
-              <ForgeMark className="size-4 text-violet-200" /> Forge assistant
-            </p>
-            <button onClick={() => setOpen(false)} aria-label="Close Forge assistant">
-              <X className="size-4 text-zinc-500" />
+            <div className="relative">
+              <button
+                onClick={() => setIsSessionsOpen((value) => !value)}
+                className="inline-flex max-w-56 items-center gap-2 text-sm font-medium text-zinc-200 hover:text-[#eee9df]"
+              >
+                <ForgeMark className="size-4 shrink-0 text-violet-200" />
+                <span className="truncate">
+                  {sessions.find((session) => session.id === sessionId)?.title ?? 'Forge assistant'}
+                </span>
+              </button>
+              {isSessionsOpen && (
+                <div className="absolute left-0 top-8 z-20 w-64 rounded-xl bg-[#222126] p-2 shadow-2xl ring-1 ring-white/[.1]">
+                  <button
+                    onClick={() => void createSession()}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-violet-100 hover:bg-[#29282b]"
+                  >
+                    + New chat
+                  </button>
+                  <div className="my-1 border-t border-white/[.07]" />
+                  {sessions.map((session) => (
+                    <button
+                      key={session.id}
+                      onClick={() => {
+                        setSessionId(session.id)
+                        setIsSessionsOpen(false)
+                        setMessages([])
+                      }}
+                      className={`block w-full truncate rounded-lg px-3 py-2 text-left text-sm ${session.id === sessionId ? 'bg-white/[.08] text-zinc-100' : 'text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+                    >
+                      {session.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close Forge assistant"
+              className="rounded-md p-1 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              <X className="size-4" />
             </button>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-4 text-sm">
