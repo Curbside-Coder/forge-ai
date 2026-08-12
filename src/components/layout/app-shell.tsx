@@ -98,7 +98,7 @@ export function AppShell({ children }: PropsWithChildren) {
               key={to}
               to={to}
               activeProps={{ className: 'bg-white/[0.07] text-white' }}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
             >
               <Icon className="size-4" />
               {label}
@@ -108,7 +108,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <Link
           to="/settings"
           activeProps={{ className: 'bg-white/[0.07] text-white' }}
-          className="absolute bottom-6 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-white/[0.04] hover:text-white"
+          className="absolute bottom-6 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
         >
           <Settings className="size-4" />
           Settings
@@ -250,7 +250,7 @@ export function AppShell({ children }: PropsWithChildren) {
                   to={to}
                   onClick={() => setIsNavOpen(false)}
                   activeProps={{ className: 'bg-white/[0.07] text-white' }}
-                  className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                  className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
                 >
                   <Icon className="size-4" />
                   {label}
@@ -260,7 +260,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <Link
               to="/settings"
               onClick={() => setIsNavOpen(false)}
-              className="mt-auto flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+              className="mt-auto flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
             >
               <Settings className="size-4" />
               Settings

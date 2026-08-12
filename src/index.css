@@ -47,6 +47,13 @@ select option {
   background-color: #e2ddd2 !important;
 }
 
+/* Existing dark controls with translucent-white hover surfaces need a deliberate foreground. */
+[class*='text-zinc-500'][class*='hover:bg-white']:hover,
+[class*='text-zinc-400'][class*='hover:bg-white']:hover,
+[class*='text-zinc-300'][class*='hover:bg-white']:hover {
+  color: #eee9df !important;
+}
+
 select,
 .forge-select {
   appearance: none;
