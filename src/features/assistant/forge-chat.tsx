@@ -1,4 +1,4 @@
-import { Bot, Check, Send, X } from 'lucide-react'
+import { Bot, Check, Mic, Send, Volume2, VolumeX, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ForgeMark } from '@/components/brand/forge-mark'
 import { useAuth } from '@/features/auth/auth-provider'
@@ -43,6 +43,25 @@ type ChatMessage = {
   createdAt: string
 }
 type ChatSession = { id: string; title: string; createdAt: string; updatedAt: string }
+type RecognitionEvent = { results: ArrayLike<{ 0: { transcript: string } }> }
+type Recognition = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: RecognitionEvent) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+type RecognitionConstructor = new () => Recognition
+
+declare global {
+  interface Window {
+    SpeechRecognition?: RecognitionConstructor
+    webkitSpeechRecognition?: RecognitionConstructor
+  }
+}
 
 export function ForgeChat() {
   const { user } = useAuth()
@@ -54,8 +73,13 @@ export function ForgeChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isSessionsOpen, setIsSessionsOpen] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [voiceEnabled, setVoiceEnabled] = useState(
+    () => window.localStorage.getItem('forge.chat.voice') === 'on',
+  )
   const latestMessageRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLInputElement | null>(null)
+  const recognitionRef = useRef<Recognition | null>(null)
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -169,6 +193,10 @@ export function ForgeChat() {
     }, 60)
     return () => window.clearTimeout(timer)
   }, [loading, messages.length, open])
+  useEffect(() => {
+    window.localStorage.setItem('forge.chat.voice', voiceEnabled ? 'on' : 'off')
+    if (!voiceEnabled) window.speechSynthesis?.cancel()
+  }, [voiceEnabled])
   const createSession = async () => {
     if (!supabase || !user) return null
     const { data, error: createError } = await supabase
@@ -220,8 +248,8 @@ export function ForgeChat() {
         }
       : null
   }
-  const ask = async () => {
-    const request = message.trim()
+  const ask = async (spokenRequest?: string) => {
+    const request = (spokenRequest ?? message).trim()
     if (!request || !supabase) return
     let activeSessionId = sessionId
     if (!activeSessionId) {
@@ -296,6 +324,58 @@ export function ForgeChat() {
         createdAt: new Date().toISOString(),
       },
     ])
+    if (voiceEnabled) speak(data.message)
+  }
+  const speak = (text: string) => {
+    if (!('speechSynthesis' in window)) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text.replace(/[`#*_]/g, ''))
+    utterance.rate = 1
+    utterance.pitch = 0.9
+    const voice = window.speechSynthesis
+      .getVoices()
+      .find(
+        (candidate) =>
+          candidate.lang.startsWith('en') && /male|daniel|google/i.test(candidate.name),
+      )
+    if (voice) utterance.voice = voice
+    window.speechSynthesis.speak(utterance)
+  }
+  const listen = () => {
+    if (isListening) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const SpeechRecognition = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setError('Voice input is not available in this browser. Use Chrome or Edge for voice mode.')
+      return
+    }
+    window.speechSynthesis?.cancel()
+    let transcript = ''
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = navigator.language || 'en-US'
+    recognition.onresult = (event) => {
+      transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? '')
+        .join('')
+        .trim()
+      setMessage(transcript)
+    }
+    recognition.onerror = () => {
+      setIsListening(false)
+      setError('Forge could not hear that. Try again or type your request.')
+    }
+    recognition.onend = () => {
+      setIsListening(false)
+      if (transcript) void ask(transcript)
+    }
+    recognitionRef.current = recognition
+    setError(null)
+    setIsListening(true)
+    recognition.start()
   }
   const apply = async () => {
     if (!supabase || !user || actions.length === 0) return
@@ -508,13 +588,23 @@ export function ForgeChat() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              aria-label="Close Forge assistant"
-              className="rounded-md p-1 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
-            >
-              <X className="size-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setVoiceEnabled((value) => !value)}
+                aria-label={voiceEnabled ? 'Mute Forge voice' : 'Enable Forge voice'}
+                title={voiceEnabled ? 'Forge will speak replies' : 'Enable spoken Forge replies'}
+                className={`rounded-md p-1 ${voiceEnabled ? 'text-violet-200' : 'text-zinc-500'} hover:bg-[#29282b] hover:text-[#eee9df]`}
+              >
+                {voiceEnabled ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close Forge assistant"
+                className="rounded-md p-1 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-4 text-sm">
             {messages.length === 0 && (
@@ -584,6 +674,15 @@ export function ForgeChat() {
               placeholder="Ask Forge to do something…"
               className="min-w-0 flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-white/[0.08] placeholder:text-zinc-600"
             />
+            <button
+              onClick={listen}
+              disabled={loading}
+              aria-label={isListening ? 'Stop listening' : 'Speak to Forge'}
+              title={isListening ? 'Listening… tap to stop' : 'Speak to Forge'}
+              className={`rounded-lg px-3 ${isListening ? 'animate-pulse bg-rose-300 text-rose-950' : 'bg-white/[.08] text-zinc-300 hover:bg-[#29282b] hover:text-[#eee9df]'} disabled:opacity-50`}
+            >
+              <Mic className="size-4" />
+            </button>
             <button
               onClick={() => void ask()}
               disabled={loading || !message.trim()}
