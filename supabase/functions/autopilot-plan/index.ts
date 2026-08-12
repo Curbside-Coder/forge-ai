@@ -91,8 +91,10 @@ Deno.serve(async (request) => {
       reason: string
       minutes: number
     }
-    if (!workItems.some((item) => item.id === direction.workItemId))
-      throw new Error('Unknown work item')
+    const selectedItem = workItems.find((item) => item.id === direction.workItemId)
+    if (!selectedItem) throw new Error('Unknown work item')
+    // The id is authoritative. Never let an AI-generated label point at a different task.
+    direction.title = selectedItem.title
     direction.minutes = [15, 25, 45].includes(direction.minutes) ? direction.minutes : 25
     return respond({ direction })
   } catch (error) {

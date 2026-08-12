@@ -28,6 +28,11 @@ export function DashboardPage() {
     (step) => step.status === 'in_progress' && isOpenStep(step.workItemId),
   )
   const nextSpecStep = steps.find((step) => step.status === 'todo' && isOpenStep(step.workItemId))
+  const validAiDirection = useMemo(() => {
+    if (!aiDirection) return null
+    const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
+    return item && item.status !== 'done' ? { ...aiDirection, item } : null
+  }, [aiDirection, workItems])
   const direction = useMemo(() => {
     if (activeStep)
       return {
@@ -43,15 +48,13 @@ export function DashboardPage() {
         minutes: nextSpecStep.estimateMinutes,
         step: nextSpecStep,
       }
-    if (aiDirection) {
-      const item = workItems.find((entry) => entry.id === aiDirection.workItemId)
-      if (item && item.status !== 'done')
-        return {
-          title: aiDirection.title,
-          detail: aiDirection.reason,
-          minutes: aiDirection.minutes,
-          item,
-        }
+    if (validAiDirection) {
+      return {
+        title: validAiDirection.item.title,
+        detail: validAiDirection.reason,
+        minutes: validAiDirection.minutes,
+        item: validAiDirection.item,
+      }
     }
     const candidate = [...workItems]
       .filter((item) => item.status !== 'done')
@@ -64,7 +67,14 @@ export function DashboardPage() {
           item: candidate,
         }
       : null
-  }, [activeStep, aiDirection, nextSpecStep, now, workItems])
+  }, [activeStep, nextSpecStep, now, validAiDirection, workItems])
+  const nextDirections = useMemo(() => {
+    const primaryId = direction?.item?.id ?? direction?.step?.workItemId
+    return [...workItems]
+      .filter((item) => item.status !== 'done' && item.id !== primaryId)
+      .sort((a, b) => score(b, now.getTime()) - score(a, now.getTime()))
+      .slice(0, 2)
+  }, [direction?.item?.id, direction?.step?.workItemId, now, workItems])
   const name =
     (user?.user_metadata.display_name as string | undefined) ??
     user?.email?.split('@')[0] ??
@@ -169,8 +179,30 @@ export function DashboardPage() {
             </p>
           </>
         )}
+        {direction && nextDirections.length > 0 && (
+          <div className="mt-7 border-t border-white/[.08] pt-4">
+            <p className="text-[11px] font-medium uppercase tracking-[.14em] text-zinc-500">
+              Then, in this order
+            </p>
+            <div className="mt-3 space-y-2">
+              {nextDirections.map((item, index) => (
+                <button
+                  key={item.id}
+                  onClick={() =>
+                    window.location.assign(`/work-items?item=${encodeURIComponent(item.id)}`)
+                  }
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+                >
+                  <span className="text-xs text-violet-200">{index + 2}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                  <span className="text-xs text-zinc-600">{suggestedMinutes(item)} min</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </article>
-      {aiDirection && (
+      {validAiDirection && (
         <aside className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-400/[0.07] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="inline-flex items-center gap-2 text-sm font-medium text-violet-200">
@@ -181,16 +213,17 @@ export function DashboardPage() {
               {new Intl.DateTimeFormat(undefined, {
                 dateStyle: 'medium',
                 timeStyle: 'short',
-              }).format(new Date(aiDirection.selectedAt))}
+              }).format(new Date(validAiDirection.selectedAt))}
             </p>
           </div>
           <p className="mt-3 text-sm leading-6 text-zinc-300">
-            <span className="font-medium text-zinc-100">Why this now:</span> {aiDirection.reason}
+            <span className="font-medium text-zinc-100">Why this now:</span>{' '}
+            {validAiDirection.reason}
           </p>
           <button
             onClick={() =>
               window.location.assign(
-                `/work-items?item=${encodeURIComponent(aiDirection.workItemId)}`,
+                `/work-items?item=${encodeURIComponent(validAiDirection.workItemId)}`,
               )
             }
             className="mt-4 text-sm font-medium text-violet-200 hover:text-violet-100"
