@@ -33,6 +33,7 @@ const mapPlan = (row: Record<string, unknown>): Spec => ({
   outOfScope: row.out_of_scope as string,
   technicalContext: row.technical_context as string,
   edgeCases: row.edge_cases as string,
+  briefMarkdown: (row.brief_markdown as string) ?? '',
   retrospective: row.retrospective as string,
   status: row.status as Spec['status'],
   priority: row.priority as Spec['priority'],
@@ -156,6 +157,7 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       outOfScope: '',
       technicalContext: '',
       edgeCases: '',
+      briefMarkdown: '## Recommended approach\n\nStart with the next concrete action below.',
       retrospective: '',
       status: 'active',
       priority: item.priority,
@@ -179,15 +181,31 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       save({ ...data, plans: [plan, ...data.plans], steps: [...data.steps, step] })
       return plan
     }
+    const { data: aiPlan, error: aiError } = await supabase!.functions.invoke('forge-work-plan', {
+      body: {
+        title: item.title,
+        description: item.description,
+        type: item.type,
+        priority: item.priority,
+      },
+    })
+    if (aiError || aiPlan?.error) {
+      setError(aiPlan?.error ?? 'Forge AI could not build a plan right now.')
+      return null
+    }
+    const draftedSteps = (
+      aiPlan.steps as Array<{ title: string; notes: string; minutes: number }>
+    ).slice(0, 7)
     const { data: inserted, error: planError } = await supabase!
       .from('specs')
       .insert({
         owner_id: user!.id,
         project_id: plan.projectId,
         title: plan.title,
-        problem_statement: plan.problemStatement,
-        desired_outcome: plan.desiredOutcome,
-        in_scope: plan.inScope,
+        problem_statement: aiPlan.problemStatement,
+        desired_outcome: aiPlan.desiredOutcome,
+        in_scope: item.description,
+        brief_markdown: aiPlan.briefMarkdown,
         status: 'active',
         priority: plan.priority,
         active_position: 1,
@@ -199,15 +217,18 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
       return null
     }
     const savedPlan = mapPlan(inserted as Record<string, unknown>)
-    const { data: savedStep, error: stepError } = await supabase!
+    const { data: savedSteps, error: stepError } = await supabase!
       .from('spec_steps')
-      .insert({
-        spec_id: savedPlan.id,
-        title: step.title,
-        notes: step.notes,
-        estimate_minutes: minutes,
-        work_item_id: item.id,
-      })
+      .insert(
+        draftedSteps.map((draft, position) => ({
+          spec_id: savedPlan.id,
+          title: draft.title,
+          notes: draft.notes,
+          estimate_minutes: draft.minutes,
+          position,
+          work_item_id: item.id,
+        })),
+      )
       .select()
       .single()
     if (stepError) {
@@ -217,7 +238,7 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
     setData((current) => ({
       ...current,
       plans: [savedPlan, ...current.plans],
-      steps: [...current.steps, mapStep(savedStep as Record<string, unknown>)],
+      steps: [...current.steps, ...(savedSteps as Record<string, unknown>[]).map(mapStep)],
     }))
     return savedPlan
   }

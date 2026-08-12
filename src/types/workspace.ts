@@ -39,6 +39,7 @@ export type Spec = {
   outOfScope: string
   technicalContext: string
   edgeCases: string
+  briefMarkdown: string
   retrospective: string
   status: SpecStatus
   priority: WorkItemPriority

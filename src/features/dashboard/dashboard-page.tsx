@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { RichText } from '@/components/shared/rich-text'
 import { supabase } from '@/lib/supabase'
 import type { WorkItem } from '@/types/workspace'
 
@@ -316,6 +317,39 @@ export function DashboardPage() {
             {visiblePlanStep.notes && (
               <p className="mt-1 text-xs leading-5 text-zinc-500">{visiblePlanStep.notes}</p>
             )}
+          </div>
+          {activePlan.briefMarkdown && (
+            <details className="mt-4 rounded-xl bg-black/20 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-200">
+                Read Forge’s analysis, approach, and references
+              </summary>
+              <RichText content={activePlan.briefMarkdown} className="mt-4 text-zinc-300" />
+            </details>
+          )}
+          <div className="mt-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Checklist</p>
+            <ol className="mt-2 space-y-2">
+              {steps
+                .filter((step) => step.specId === activePlan.id)
+                .sort((a, b) => a.position - b.position)
+                .map((step, index) => (
+                  <li key={step.id} className="flex gap-3 text-sm">
+                    <span
+                      className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[10px] ${step.status === 'done' ? 'bg-emerald-400/15 text-emerald-200' : step.status === 'in_progress' ? 'bg-violet-400/15 text-violet-100' : 'bg-white/[.07] text-zinc-500'}`}
+                    >
+                      {step.status === 'done' ? '✓' : index + 1}
+                    </span>
+                    <span
+                      className={
+                        step.status === 'done' ? 'text-zinc-600 line-through' : 'text-zinc-300'
+                      }
+                    >
+                      {step.title}
+                      <span className="ml-2 text-xs text-zinc-600">{step.estimateMinutes} min</span>
+                    </span>
+                  </li>
+                ))}
+            </ol>
           </div>
           {visiblePlanStep.workItemId && (
             <button
