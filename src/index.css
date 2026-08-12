@@ -43,8 +43,8 @@ select option {
 [class~='text-zinc-950'] {
   color: #1b1916 !important;
 }
-[class*='hover:bg-white']:hover {
-  background-color: #e2ddd2 !important;
+[class*='hover:bg-white']:not([class~='bg-zinc-100']):hover {
+  background-color: #29282b !important;
 }
 
 /* Existing dark controls with translucent-white hover surfaces need a deliberate foreground. */
