@@ -624,6 +624,16 @@ export function ForgeChat() {
                 }
               >
                 <p className="leading-6">{entry.body}</p>
+                {entry.role === 'assistant' && (
+                  <button
+                    onClick={() => speak(entry.body)}
+                    title="Hear this answer again"
+                    aria-label="Hear this answer again"
+                    className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-zinc-500 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+                  >
+                    <Volume2 className="size-3" /> Replay
+                  </button>
+                )}
                 {entry.usage && (
                   <p className="mt-2 text-[10px] text-zinc-500/60">
                     {entry.usage.inputTokens.toLocaleString()} in ·{' '}
