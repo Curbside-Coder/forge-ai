@@ -35,6 +35,7 @@ export function DashboardPage() {
   } = useAutopilot()
   const [message, setMessage] = useState<string | null>(null)
   const [isAskingAi, setIsAskingAi] = useState(false)
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false)
   const [now] = useState(() => new Date())
   const [clock, setClock] = useState(() => Date.now())
   const [isCompletingFocus, setIsCompletingFocus] = useState(false)
@@ -136,7 +137,9 @@ export function DashboardPage() {
   }, [user])
   const generatePlan = async () => {
     if (!direction?.item) return
+    setIsCreatingPlan(true)
     const spec = await createPlan(direction.item, direction.minutes)
+    setIsCreatingPlan(false)
     if (!spec) return
     setMessage(`Plan ready: “${spec.title}” now has one next action queued below.`)
   }
@@ -248,9 +251,10 @@ export function DashboardPage() {
               {direction.item && (
                 <button
                   onClick={() => void generatePlan()}
-                  className="rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/[0.13]"
+                  disabled={isCreatingPlan}
+                  className="rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm text-zinc-200 transition hover:bg-[#29282b] hover:text-[#eee9df] disabled:cursor-wait disabled:opacity-60"
                 >
-                  Turn this into a plan
+                  {isCreatingPlan ? 'Forge is building your plan…' : 'Turn this into a plan'}
                 </button>
               )}
               <button

@@ -230,7 +230,6 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
         })),
       )
       .select()
-      .single()
     if (stepError) {
       setError(stepError.message)
       return savedPlan
@@ -238,7 +237,7 @@ export function AutopilotProvider({ children }: PropsWithChildren) {
     setData((current) => ({
       ...current,
       plans: [savedPlan, ...current.plans],
-      steps: [...current.steps, ...(savedSteps as Record<string, unknown>[]).map(mapStep)],
+      steps: [...current.steps, ...((savedSteps ?? []) as Record<string, unknown>[]).map(mapStep)],
     }))
     return savedPlan
   }
