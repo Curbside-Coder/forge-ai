@@ -574,7 +574,7 @@ function TimeCalendar({
                       void onDrop(withTime(day, hour, minutes), false)
                     }}
                     onClick={() => block.length === 0 && onEmptyCell(withHour(day, hour))}
-                    className={`min-h-16 border-r border-t border-white/[.05] p-1 ${isWeekend(day) ? 'bg-sky-400/[.025]' : ''} ${pastHour ? 'bg-black/20' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
+                    className={`relative min-h-16 border-r border-t border-white/[.05] p-1 ${isWeekend(day) ? 'bg-sky-400/[.025]' : ''} ${pastHour ? 'bg-black/20' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
                   >
                     {block.map((event) => (
                       <EventBar
@@ -586,6 +586,7 @@ function TimeCalendar({
                         occurrence={day}
                         day={day}
                         durationMinutes={eventDurationMinutes(event)}
+                        timeline
                       />
                     ))}
                   </div>
@@ -608,6 +609,7 @@ function EventBar({
   occurrence,
   day,
   durationMinutes,
+  timeline = false,
 }: {
   event: CalendarEvent
   onDrag: (id: string | null) => void
@@ -617,6 +619,7 @@ function EventBar({
   occurrence: Date
   day: Date
   durationMinutes?: number
+  timeline?: boolean
 }) {
   return (
     <article
@@ -633,7 +636,7 @@ function EventBar({
           ? { minHeight: `${Math.max(28, (durationMinutes / 60) * 64 - 4)}px` }
           : undefined
       }
-      className={`group relative z-10 mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 transition-opacity ${tones[event.color] ?? tones.slate} ${muted ? 'opacity-40 grayscale-[.3]' : ''}`}
+      className={`group cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 transition-opacity ${timeline ? 'absolute inset-x-1 top-1 z-20' : 'relative z-10 mb-1'} ${tones[event.color] ?? tones.slate} ${muted ? 'opacity-40 grayscale-[.3]' : ''}`}
     >
       <div className="flex min-w-0 items-start gap-1">
         <GripVertical className="mt-px size-3 shrink-0 opacity-50" />
