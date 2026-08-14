@@ -673,6 +673,28 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
   )
 }
 
+function IconPicker({ value, onChange }: { value: string; onChange: (icon: string) => void }) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center justify-around rounded-lg bg-black/20 px-1 ring-1 ring-white/[.07]"
+      aria-label="Event icon"
+    >
+      {icons.map((icon) => (
+        <button
+          key={icon}
+          type="button"
+          title={`${icon[0].toUpperCase()}${icon.slice(1)} event icon`}
+          aria-label={`Use ${icon} event icon`}
+          onClick={() => onChange(icon)}
+          className={`grid size-6 place-items-center rounded-md transition ${value === icon ? 'bg-white/[.14] text-sky-100 ring-1 ring-sky-300/50' : 'text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+        >
+          <EventIcon icon={icon} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function RecurrencePicker({
   value,
   customDays,
@@ -821,6 +843,9 @@ function EventDrawer({
   const [description, setDescription] = useState(event.description)
   const [startsAt, setStartsAt] = useState(toDateTimeLocal(new Date(event.starts_at)))
   const [endsAt, setEndsAt] = useState(toDateTimeLocal(new Date(event.ends_at)))
+  const [icon, setIcon] = useState(event.icon)
+  const [color, setColor] = useState(event.color)
+  const [preparation, setPreparation] = useState(event.preparation_note)
   const [recurrence, setRecurrence] = useState<Recurrence>(event.recurrence ?? 'none')
   const [customDays, setCustomDays] = useState<number[]>(event.custom_days ?? [])
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -848,6 +873,9 @@ function EventDrawer({
         description,
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
+        icon,
+        color,
+        preparation_note: preparation,
         recurrence,
         custom_days: customDays,
       })
@@ -917,6 +945,23 @@ function EventDrawer({
             setCustomDays(days)
           }}
           className="mt-2"
+        />
+        <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Appearance
+        </label>
+        <div className="mt-2 flex gap-2">
+          <IconPicker value={icon} onChange={setIcon} />
+          <ColorPicker value={color} onChange={setColor} />
+        </div>
+        <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Preparation note
+        </label>
+        <textarea
+          value={preparation}
+          onChange={(e) => setPreparation(e.target.value)}
+          rows={3}
+          placeholder="What should you prepare or remember?"
+          className="mt-2 w-full rounded-xl bg-black/20 p-3 text-sm text-zinc-200 outline-none ring-1 ring-white/[.08]"
         />
         <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
           Details
