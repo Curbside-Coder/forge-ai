@@ -10,7 +10,7 @@ import {
   HeartHandshake,
   HeartPulse,
   Plane,
-  Trash2,
+  Repeat2,
   Utensils,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -27,9 +27,13 @@ type CalendarEvent = {
   color: string
   preparation_note: string
   recurrence: Recurrence
+  custom_days: number[]
+  recurrence_until: string | null
+  excluded_dates: string[]
 }
 type View = 'day' | 'week' | 'month' | 'rolling' | 'quarter' | 'year'
-type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+type Recurrence =
+  'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'monthly' | 'yearly' | 'custom'
 const views: Array<[View, string]> = [
   ['day', 'Day'],
   ['week', 'Week'],
@@ -50,13 +54,7 @@ const tones: Record<string, string> = {
   violet: 'bg-indigo-400/15 text-indigo-100 ring-indigo-300/20',
 }
 const icons = ['calendar', 'work', 'travel', 'food', 'family', 'church', 'health', 'birthday']
-const recurrenceOptions: Array<[Recurrence, string]> = [
-  ['none', 'Does not repeat'],
-  ['daily', 'Daily'],
-  ['weekly', 'Weekly'],
-  ['monthly', 'Monthly'],
-  ['yearly', 'Yearly'],
-]
+const colors = ['slate', 'sky', 'emerald', 'amber', 'rust', 'indigo'] as const
 
 export function CalendarPage() {
   const { user } = useAuth()
@@ -65,7 +63,7 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null)
   const [dragged, setDragged] = useState<string | null>(null)
   const [hoverDay, setHoverDay] = useState<string | null>(null)
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<{ id: string; occurrence: Date } | null>(null)
   const [view, setView] = useState<View>(
     () => (localStorage.getItem('forge.calendar.view') as View) || 'month',
   )
@@ -81,8 +79,9 @@ export function CalendarPage() {
     color: 'slate',
     preparation: '',
     recurrence: 'none' as Recurrence,
+    customDays: [] as number[],
   })
-  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null
+  const selectedEventData = events.find((event) => event.id === selectedEvent?.id) ?? null
   useEffect(() => {
     localStorage.setItem('forge.calendar.view', view)
     localStorage.setItem('forge.calendar.anchor', anchor.toISOString())
@@ -116,6 +115,7 @@ export function CalendarPage() {
       color: form.color,
       preparation_note: form.preparation,
       recurrence: form.recurrence,
+      custom_days: form.customDays,
       source: 'forge',
     })
     if (issue) setError(issue.message)
@@ -129,18 +129,19 @@ export function CalendarPage() {
         color: 'slate',
         preparation: '',
         recurrence: 'none',
+        customDays: [],
       })
       void load()
     }
   }
-  const move = async (date: Date) => {
+  const move = async (date: Date, preserveTime = true) => {
     if (!supabase || !dragged) return
     const event = events.find((x) => x.id === dragged)
     if (!event) return
     const start = new Date(event.starts_at),
       end = new Date(event.ends_at),
       next = new Date(date)
-    next.setHours(start.getHours(), start.getMinutes(), 0, 0)
+    if (preserveTime) next.setHours(start.getHours(), start.getMinutes(), 0, 0)
     const { error: issue } = await supabase
       .from('calendar_events')
       .update({
@@ -153,9 +154,24 @@ export function CalendarPage() {
     setDragged(null)
     setHoverDay(null)
   }
-  const remove = async (id: string) => {
+  const remove = async (id: string, scope: 'one' | 'future' | 'all' = 'all', occurrence?: Date) => {
     if (!supabase) return
-    await supabase.from('calendar_events').delete().eq('id', id)
+    const event = events.find((item) => item.id === id)
+    if (!event || scope === 'all' || event.recurrence === 'none') {
+      await supabase.from('calendar_events').delete().eq('id', id)
+    } else if (scope === 'one' && occurrence) {
+      const date = toDateInput(occurrence)
+      await supabase
+        .from('calendar_events')
+        .update({ excluded_dates: [...new Set([...(event.excluded_dates ?? []), date])] })
+        .eq('id', id)
+    } else if (scope === 'future' && occurrence) {
+      const until = addDays(startOfDay(occurrence), -1)
+      await supabase
+        .from('calendar_events')
+        .update({ recurrence_until: toDateInput(until) })
+        .eq('id', id)
+    }
     void load()
   }
   const openNewEvent = (date: Date) => {
@@ -299,28 +315,13 @@ export function CalendarPage() {
               <option key={icon}>{icon}</option>
             ))}
           </select>
-          <select
-            value={form.color}
-            onChange={(e) => setForm({ ...form, color: e.target.value })}
-            className="forge-select min-w-0 flex-1 px-2 text-sm"
-          >
-            {['slate', 'sky', 'emerald', 'amber', 'rust', 'indigo'].map((color) => (
-              <option key={color}>{color}</option>
-            ))}
-          </select>
+          <ColorPicker value={form.color} onChange={(color) => setForm({ ...form, color })} />
         </div>
-        <select
-          aria-label="Repeat event"
+        <RecurrencePicker
           value={form.recurrence}
-          onChange={(e) => setForm({ ...form, recurrence: e.target.value as Recurrence })}
-          className="forge-select px-3 text-sm"
-        >
-          {recurrenceOptions.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+          customDays={form.customDays}
+          onChange={(recurrence, customDays) => setForm({ ...form, recurrence, customDays })}
+        />
       </form>
       {attention.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-300/15 bg-amber-400/[.06] px-4 py-3 text-sm text-amber-100">
@@ -344,8 +345,7 @@ export function CalendarPage() {
             onDrag={setDragged}
             onHover={setHoverDay}
             onDrop={move}
-            onDelete={remove}
-            onSelect={setSelectedEventId}
+            onSelect={(id, occurrence) => setSelectedEvent({ id, occurrence })}
             onEmptyCell={openNewEvent}
           />
         ) : (
@@ -362,9 +362,8 @@ export function CalendarPage() {
                 onDrag={setDragged}
                 onHover={setHoverDay}
                 onDrop={move}
-                onDelete={remove}
                 compact={months.length > 1}
-                onSelect={setSelectedEventId}
+                onSelect={(id, occurrence) => setSelectedEvent({ id, occurrence })}
                 onEmptyCell={openNewEvent}
               />
             ))}
@@ -375,18 +374,19 @@ export function CalendarPage() {
         Click empty time while creating above. Drag an event to preview its drop day, then release
         to reschedule. Events show preparation notes before they are due.
       </p>
-      {selectedEvent && (
+      {selectedEventData && selectedEvent && (
         <EventDrawer
-          event={selectedEvent}
+          event={selectedEventData}
+          occurrence={selectedEvent.occurrence}
           userId={user?.id ?? ''}
-          onClose={() => setSelectedEventId(null)}
-          onDelete={async () => {
-            await remove(selectedEvent.id)
-            setSelectedEventId(null)
+          onClose={() => setSelectedEvent(null)}
+          onDelete={async (scope) => {
+            await remove(selectedEventData.id, scope, selectedEvent.occurrence)
+            setSelectedEvent(null)
           }}
           onSaved={async () => {
             await load()
-            setSelectedEventId(null)
+            setSelectedEvent(null)
           }}
         />
       )}
@@ -401,7 +401,6 @@ function MonthCalendar({
   onDrag,
   onHover,
   onDrop,
-  onDelete,
   compact,
   onSelect,
   onEmptyCell,
@@ -412,10 +411,9 @@ function MonthCalendar({
   hoverDay: string | null
   onDrag: (id: string | null) => void
   onHover: (day: string | null) => void
-  onDrop: (date: Date) => Promise<void>
-  onDelete: (id: string) => Promise<void>
+  onDrop: (date: Date, preserveTime?: boolean) => Promise<void>
   compact: boolean
-  onSelect: (id: string) => void
+  onSelect: (id: string, occurrence: Date) => void
   onEmptyCell: (date: Date) => void
 }) {
   const first = startOfMonth(month),
@@ -453,7 +451,7 @@ function MonthCalendar({
               onDragLeave={() => onHover(null)}
               onDrop={() => void onDrop(day)}
               onClick={() => inMonth && dayEvents.length === 0 && onEmptyCell(day)}
-              className={`min-h-28 border-b border-r border-white/[.05] p-1.5 ${!inMonth ? 'bg-black/25' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
+              className={`min-h-28 border-b border-r border-white/[.05] p-1.5 ${!inMonth ? 'bg-black/25' : isWeekend(day) ? 'bg-sky-400/[.035]' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
             >
               {inMonth && (
                 <>
@@ -467,9 +465,9 @@ function MonthCalendar({
                       key={event.id}
                       event={event}
                       onDrag={onDrag}
-                      onDelete={onDelete}
                       compact={compact}
                       onSelect={onSelect}
+                      occurrence={day}
                     />
                   ))}
                 </>
@@ -490,7 +488,6 @@ function TimeCalendar({
   onDrag,
   onHover,
   onDrop,
-  onDelete,
   onSelect,
   onEmptyCell,
 }: {
@@ -501,9 +498,8 @@ function TimeCalendar({
   hoverDay: string | null
   onDrag: (id: string | null) => void
   onHover: (key: string | null) => void
-  onDrop: (date: Date) => Promise<void>
-  onDelete: (id: string) => Promise<void>
-  onSelect: (id: string) => void
+  onDrop: (date: Date, preserveTime?: boolean) => Promise<void>
+  onSelect: (id: string, occurrence: Date) => void
   onEmptyCell: (date: Date) => void
 }) {
   const start = view === 'week' ? startOfWeek(anchor) : startOfDay(anchor),
@@ -518,7 +514,10 @@ function TimeCalendar({
       >
         <div />
         {days.map((day) => (
-          <div key={dateKey(day)} className="px-3 py-3 text-center">
+          <div
+            key={dateKey(day)}
+            className={`px-3 py-3 text-center ${isWeekend(day) ? 'bg-sky-400/[.035]' : ''}`}
+          >
             <p className="text-xs text-zinc-500">
               {day.toLocaleDateString(undefined, { weekday: 'short' })}
             </p>
@@ -553,7 +552,14 @@ function TimeCalendar({
                       onHover(key)
                     }}
                     onDragLeave={() => onHover(null)}
-                    onDrop={() => void onDrop(day)}
+                    onDrop={(drop) => {
+                      const rect = drop.currentTarget.getBoundingClientRect()
+                      const minutes = Math.min(
+                        45,
+                        Math.max(0, Math.floor(((drop.clientY - rect.top) / rect.height) * 4) * 15),
+                      )
+                      void onDrop(withTime(day, hour, minutes), false)
+                    }}
                     onClick={() => block.length === 0 && onEmptyCell(withHour(day, hour))}
                     className={`min-h-16 border-r border-t border-white/[.05] p-1 ${isWeekend(day) ? 'bg-sky-400/[.025]' : ''} ${pastHour ? 'bg-black/20' : ''} ${hoverDay === key ? 'bg-sky-400/[.09] ring-1 ring-inset ring-sky-300/60' : dragged ? 'bg-white/[.018] ring-1 ring-inset ring-sky-300/15' : ''}`}
                   >
@@ -562,9 +568,9 @@ function TimeCalendar({
                         key={event.id}
                         event={event}
                         onDrag={onDrag}
-                        onDelete={onDelete}
                         onSelect={onSelect}
                         muted={showingToday && hasEnded(event, day, now)}
+                        occurrence={day}
                       />
                     ))}
                   </div>
@@ -581,17 +587,17 @@ function TimeCalendar({
 function EventBar({
   event,
   onDrag,
-  onDelete,
   compact = false,
   onSelect,
   muted = false,
+  occurrence,
 }: {
   event: CalendarEvent
   onDrag: (id: string | null) => void
-  onDelete: (id: string) => Promise<void>
   compact?: boolean
-  onSelect: (id: string) => void
+  onSelect: (id: string, occurrence: Date) => void
   muted?: boolean
+  occurrence: Date
 }) {
   return (
     <article
@@ -600,7 +606,7 @@ function EventBar({
       onDragEnd={() => onDrag(null)}
       onClick={(click) => {
         click.stopPropagation()
-        onSelect(event.id)
+        onSelect(event.id, occurrence)
       }}
       title={`${event.title}${event.description ? ` — ${event.description}` : ''}\nDrag to move. Click delete to remove.`}
       className={`group mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 transition-opacity ${tones[event.color] ?? tones.slate} ${muted ? 'opacity-40 grayscale-[.3]' : ''}`}
@@ -619,16 +625,6 @@ function EventBar({
             </span>
           )}
         </span>
-        <button
-          onClick={(click) => {
-            click.stopPropagation()
-            void onDelete(event.id)
-          }}
-          aria-label={`Delete ${event.title}`}
-          className="shrink-0 opacity-0 transition group-hover:opacity-70 hover:text-rose-200"
-        >
-          <Trash2 className="size-3" />
-        </button>
       </div>
     </article>
   )
@@ -654,6 +650,144 @@ function EventIcon({ icon }: { icon: string }) {
       return <CalendarDays className={classes} />
   }
 }
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center justify-around rounded-lg bg-black/20 px-1 ring-1 ring-white/[.07]"
+      aria-label="Event color"
+    >
+      {colors.map((color) => (
+        <button
+          key={color}
+          type="button"
+          title={`${color[0].toUpperCase()}${color.slice(1)} event color`}
+          aria-label={`Use ${color} event color`}
+          onClick={() => onChange(color)}
+          className={`size-5 rounded-full ring-2 transition ${value === color ? 'scale-110 ring-white/80' : 'ring-transparent hover:scale-110'}`}
+        >
+          <span className={`block size-full rounded-full ${colorDot(color)}`} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function RecurrencePicker({
+  value,
+  customDays,
+  onChange,
+  className = '',
+}: {
+  value: Recurrence
+  customDays: number[]
+  onChange: (recurrence: Recurrence, customDays: number[]) => void
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const [draftDays, setDraftDays] = useState(customDays)
+  const openPicker = () => {
+    setDraft(value)
+    setDraftDays(customDays)
+    setOpen(true)
+  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openPicker}
+        className={`inline-flex min-w-0 items-center gap-2 rounded-lg bg-black/20 px-3 py-2 text-left text-sm text-zinc-300 ring-1 ring-white/[.07] hover:bg-[#29282b] hover:text-[#eee9df] ${className}`}
+      >
+        <Repeat2 className="size-4 shrink-0 text-sky-200" />
+        <span className="truncate">{recurrenceLabel(value, customDays)}</span>
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <button
+            aria-label="Close repeat settings"
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 cursor-default bg-black/65"
+          />
+          <section className="relative w-full max-w-md rounded-2xl border border-white/[.1] bg-[#17171c] p-5 shadow-2xl">
+            <h2 className="text-lg font-semibold">Repeat event</h2>
+            <p className="mt-1 text-sm text-zinc-500">Choose the rhythm that matches this event.</p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              {(
+                [
+                  ['none', 'Does not repeat'],
+                  ['daily', 'Every day'],
+                  ['weekdays', 'Weekdays'],
+                  ['weekends', 'Weekends'],
+                  ['weekly', 'Every week'],
+                  ['monthly', 'Every month'],
+                  ['yearly', 'Every year'],
+                  ['custom', 'Custom days'],
+                ] as Array<[Recurrence, string]>
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setDraft(mode)}
+                  className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${draft === mode ? 'border-sky-300/50 bg-sky-400/[.12] text-sky-100' : 'border-white/[.08] bg-white/[.025] text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {draft === 'custom' && (
+              <div className="mt-5">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Days of the week
+                </p>
+                <div className="mt-2 grid grid-cols-7 gap-1.5">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
+                    const active = draftDays.includes(index)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() =>
+                          setDraftDays((days) =>
+                            active ? days.filter((item) => item !== index) : [...days, index],
+                          )
+                        }
+                        className={`rounded-lg py-2 text-xs font-medium ${active ? 'bg-sky-300 text-slate-950' : 'bg-white/[.05] text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+                      >
+                        {day}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(draft, draft === 'custom' ? draftDays : [])
+                  setOpen(false)
+                }}
+                disabled={draft === 'custom' && draftDays.length === 0}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Apply
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </>
+  )
+}
+
 function NowLine({ now }: { now: Date }) {
   const top = 3.75 + now.getHours() * 4 + (now.getMinutes() / 60) * 4
   return (
@@ -670,15 +804,17 @@ function NowLine({ now }: { now: Date }) {
 }
 function EventDrawer({
   event,
+  occurrence,
   userId,
   onClose,
   onDelete,
   onSaved,
 }: {
   event: CalendarEvent
+  occurrence: Date
   userId: string
   onClose: () => void
-  onDelete: () => Promise<void>
+  onDelete: (scope: 'one' | 'future' | 'all') => Promise<void>
   onSaved: () => Promise<void>
 }) {
   const [title, setTitle] = useState(event.title)
@@ -686,6 +822,8 @@ function EventDrawer({
   const [startsAt, setStartsAt] = useState(toDateTimeLocal(new Date(event.starts_at)))
   const [endsAt, setEndsAt] = useState(toDateTimeLocal(new Date(event.ends_at)))
   const [recurrence, setRecurrence] = useState<Recurrence>(event.recurrence ?? 'none')
+  const [customDays, setCustomDays] = useState<number[]>(event.custom_days ?? [])
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [comment, setComment] = useState('')
   const [comments, setComments] = useState<Array<{ id: string; body: string; created_at: string }>>(
     [],
@@ -711,6 +849,7 @@ function EventDrawer({
         starts_at: new Date(startsAt).toISOString(),
         ends_at: new Date(endsAt).toISOString(),
         recurrence,
+        custom_days: customDays,
       })
       .eq('id', event.id)
     setSaving(false)
@@ -770,17 +909,15 @@ function EventDrawer({
         <label className="mt-5 block text-xs font-medium uppercase tracking-wide text-zinc-500">
           Repeat
         </label>
-        <select
+        <RecurrencePicker
           value={recurrence}
-          onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-          className="forge-select mt-2 w-full px-3 py-2 text-sm"
-        >
-          {recurrenceOptions.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+          customDays={customDays}
+          onChange={(next, days) => {
+            setRecurrence(next)
+            setCustomDays(days)
+          }}
+          className="mt-2"
+        />
         <label className="mt-6 block text-xs font-medium uppercase tracking-wide text-zinc-500">
           Details
         </label>
@@ -799,12 +936,57 @@ function EventDrawer({
             {saving ? 'Saving…' : 'Save changes'}
           </button>
           <button
-            onClick={() => void onDelete()}
+            onClick={() => setConfirmDelete(true)}
             className="rounded-lg px-4 py-2 text-sm text-rose-300 hover:bg-rose-400/10"
           >
-            Delete
+            Cancel / delete
           </button>
         </div>
+        {confirmDelete && (
+          <section className="mt-4 rounded-xl border border-rose-300/20 bg-rose-400/[.06] p-4">
+            <p className="text-sm font-medium text-rose-100">Cancel this event?</p>
+            {event.recurrence !== 'none' ? (
+              <p className="mt-1 text-xs text-zinc-400">
+                This occurrence is {occurrence.toLocaleDateString()}. Choose how much of the series
+                to remove.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-zinc-400">
+                This permanently removes the event and its comments.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {event.recurrence !== 'none' && (
+                <button
+                  onClick={() => void onDelete('one')}
+                  className="rounded-lg bg-white/[.08] px-3 py-2 text-xs text-zinc-200 hover:bg-[#29282b]"
+                >
+                  Only this occurrence
+                </button>
+              )}
+              {event.recurrence !== 'none' && (
+                <button
+                  onClick={() => void onDelete('future')}
+                  className="rounded-lg bg-white/[.08] px-3 py-2 text-xs text-zinc-200 hover:bg-[#29282b]"
+                >
+                  This and future
+                </button>
+              )}
+              <button
+                onClick={() => void onDelete('all')}
+                className="rounded-lg bg-rose-300 px-3 py-2 text-xs font-medium text-rose-950"
+              >
+                {event.recurrence !== 'none' ? 'Entire series' : 'Delete event'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="rounded-lg px-3 py-2 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+              >
+                Keep it
+              </button>
+            </div>
+          </section>
+        )}
         <section className="mt-8 border-t border-white/[.07] pt-6">
           <h2 className="font-medium">Comments</h2>
           <div className="mt-3 space-y-2">
@@ -911,6 +1093,11 @@ function withHour(day: Date, hour: number) {
   value.setHours(hour, 0, 0, 0)
   return value
 }
+function withTime(day: Date, hour: number, minutes: number) {
+  const value = new Date(day)
+  value.setHours(hour, minutes, 0, 0)
+  return value
+}
 function isWeekend(day: Date) {
   return day.getDay() === 0 || day.getDay() === 6
 }
@@ -919,19 +1106,56 @@ function occursOn(event: CalendarEvent, day: Date) {
   const start = startOfDay(new Date(event.starts_at))
   const target = startOfDay(day)
   if (target.getTime() < start.getTime()) return false
+  if (event.recurrence_until && toDateInput(target) > event.recurrence_until) return false
+  if (event.excluded_dates?.includes(toDateInput(target))) return false
   const daysSinceStart = Math.round((target.getTime() - start.getTime()) / 86_400_000)
   switch (event.recurrence ?? 'none') {
     case 'daily':
       return true
     case 'weekly':
       return daysSinceStart % 7 === 0
+    case 'weekdays':
+      return target.getDay() >= 1 && target.getDay() <= 5
+    case 'weekends':
+      return target.getDay() === 0 || target.getDay() === 6
     case 'monthly':
       return target.getDate() === start.getDate()
     case 'yearly':
       return target.getMonth() === start.getMonth() && target.getDate() === start.getDate()
+    case 'custom':
+      return (event.custom_days ?? []).includes(target.getDay())
     default:
       return daysSinceStart === 0
   }
+}
+
+function recurrenceLabel(recurrence: Recurrence, customDays: number[]) {
+  if (recurrence === 'none') return 'Does not repeat'
+  if (recurrence === 'weekdays') return 'Every weekday'
+  if (recurrence === 'weekends') return 'Every weekend'
+  if (recurrence === 'custom') {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    return customDays.length
+      ? `Custom: ${customDays
+          .sort((a, b) => a - b)
+          .map((day) => days[day])
+          .join(', ')}`
+      : 'Custom days'
+  }
+  return `Every ${recurrence === 'daily' ? 'day' : recurrence.slice(0, -2)}`
+}
+
+function colorDot(color: string) {
+  return (
+    {
+      slate: 'bg-slate-400',
+      sky: 'bg-sky-400',
+      emerald: 'bg-emerald-400',
+      amber: 'bg-amber-400',
+      rust: 'bg-orange-400',
+      indigo: 'bg-indigo-400',
+    }[color] ?? 'bg-slate-400'
+  )
 }
 
 function hasEnded(event: CalendarEvent, day: Date, now: Date) {
