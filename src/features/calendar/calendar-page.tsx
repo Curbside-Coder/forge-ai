@@ -30,6 +30,7 @@ type CalendarEvent = {
   custom_days: number[]
   recurrence_until: string | null
   excluded_dates: string[]
+  all_day: boolean
 }
 type View = 'day' | 'week' | 'month' | 'rolling' | 'quarter' | 'year'
 type Recurrence =
@@ -80,6 +81,7 @@ export function CalendarPage() {
     preparation: '',
     recurrence: 'none' as Recurrence,
     customDays: [] as number[],
+    allDay: false,
   })
   const selectedEventData = events.find((event) => event.id === selectedEvent?.id) ?? null
   useEffect(() => {
@@ -116,6 +118,7 @@ export function CalendarPage() {
       preparation_note: form.preparation,
       recurrence: form.recurrence,
       custom_days: form.customDays,
+      all_day: form.allDay,
       source: 'forge',
     })
     if (issue) setError(issue.message)
@@ -130,6 +133,7 @@ export function CalendarPage() {
         preparation: '',
         recurrence: 'none',
         customDays: [],
+        allDay: false,
       })
       void load()
     }
@@ -322,6 +326,13 @@ export function CalendarPage() {
           customDays={form.customDays}
           onChange={(recurrence, customDays) => setForm({ ...form, recurrence, customDays })}
         />
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, allDay: !form.allDay })}
+          className={`rounded-lg px-3 py-2 text-sm ring-1 transition ${form.allDay ? 'bg-sky-400/[.14] text-sky-100 ring-sky-300/40' : 'bg-black/20 text-zinc-400 ring-white/[.07] hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+        >
+          All-day event
+        </button>
       </form>
       {attention.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-300/15 bg-amber-400/[.06] px-4 py-3 text-sm text-amber-100">
@@ -468,6 +479,7 @@ function MonthCalendar({
                       compact={compact}
                       onSelect={onSelect}
                       occurrence={day}
+                      day={day}
                     />
                   ))}
                 </>
@@ -542,7 +554,8 @@ function TimeCalendar({
                 const key = `${dateKey(day)}-${hour}`,
                   block = events.filter(
                     (event) =>
-                      occursOn(event, day) && new Date(event.starts_at).getHours() === hour,
+                      occursOn(event, day) &&
+                      (event.all_day ? hour === 0 : new Date(event.starts_at).getHours() === hour),
                   )
                 return (
                   <div
@@ -571,6 +584,8 @@ function TimeCalendar({
                         onSelect={onSelect}
                         muted={showingToday && hasEnded(event, day, now)}
                         occurrence={day}
+                        day={day}
+                        durationMinutes={eventDurationMinutes(event)}
                       />
                     ))}
                   </div>
@@ -591,6 +606,8 @@ function EventBar({
   onSelect,
   muted = false,
   occurrence,
+  day,
+  durationMinutes,
 }: {
   event: CalendarEvent
   onDrag: (id: string | null) => void
@@ -598,6 +615,8 @@ function EventBar({
   onSelect: (id: string, occurrence: Date) => void
   muted?: boolean
   occurrence: Date
+  day: Date
+  durationMinutes?: number
 }) {
   return (
     <article
@@ -609,7 +628,12 @@ function EventBar({
         onSelect(event.id, occurrence)
       }}
       title={`${event.title}${event.description ? ` — ${event.description}` : ''}\nDrag to move. Click delete to remove.`}
-      className={`group mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 transition-opacity ${tones[event.color] ?? tones.slate} ${muted ? 'opacity-40 grayscale-[.3]' : ''}`}
+      style={
+        durationMinutes
+          ? { minHeight: `${Math.max(28, (durationMinutes / 60) * 64 - 4)}px` }
+          : undefined
+      }
+      className={`group relative z-10 mb-1 cursor-grab overflow-hidden rounded-md px-1.5 py-1 text-[10px] ring-1 transition-opacity ${tones[event.color] ?? tones.slate} ${muted ? 'opacity-40 grayscale-[.3]' : ''}`}
     >
       <div className="flex min-w-0 items-start gap-1">
         <GripVertical className="mt-px size-3 shrink-0 opacity-50" />
@@ -618,10 +642,7 @@ function EventBar({
           <span className="block truncate font-medium">{event.title}</span>
           {!compact && (
             <span className="block opacity-65">
-              {new Date(event.starts_at).toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
+              {event.all_day ? 'All day' : occurrenceTimeLabel(event, day)}
             </span>
           )}
         </span>
@@ -846,6 +867,7 @@ function EventDrawer({
   const [icon, setIcon] = useState(event.icon)
   const [color, setColor] = useState(event.color)
   const [preparation, setPreparation] = useState(event.preparation_note)
+  const [allDay, setAllDay] = useState(event.all_day)
   const [recurrence, setRecurrence] = useState<Recurrence>(event.recurrence ?? 'none')
   const [customDays, setCustomDays] = useState<number[]>(event.custom_days ?? [])
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -876,6 +898,7 @@ function EventDrawer({
         icon,
         color,
         preparation_note: preparation,
+        all_day: allDay,
         recurrence,
         custom_days: customDays,
       })
@@ -934,6 +957,13 @@ function EventDrawer({
             className="forge-date-input px-3 py-2 text-sm"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setAllDay(!allDay)}
+          className={`mt-3 rounded-lg px-3 py-2 text-sm ring-1 transition ${allDay ? 'bg-sky-400/[.14] text-sky-100 ring-sky-300/40' : 'bg-black/20 text-zinc-400 ring-white/[.07] hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+        >
+          All-day event
+        </button>
         <label className="mt-5 block text-xs font-medium uppercase tracking-wide text-zinc-500">
           Repeat
         </label>
@@ -1148,8 +1178,14 @@ function isWeekend(day: Date) {
 }
 
 function occursOn(event: CalendarEvent, day: Date) {
+  const span = Math.max(0, Math.ceil(eventDurationMinutes(event) / 1440) - 1)
+  return Array.from({ length: span + 1 }, (_, offset) => addDays(startOfDay(day), -offset)).some(
+    (candidate) => startsOn(event, candidate),
+  )
+}
+
+function startsOn(event: CalendarEvent, target: Date) {
   const start = startOfDay(new Date(event.starts_at))
-  const target = startOfDay(day)
   if (target.getTime() < start.getTime()) return false
   if (event.recurrence_until && toDateInput(target) > event.recurrence_until) return false
   if (event.excluded_dates?.includes(toDateInput(target))) return false
@@ -1172,6 +1208,20 @@ function occursOn(event: CalendarEvent, day: Date) {
     default:
       return daysSinceStart === 0
   }
+}
+
+function eventDurationMinutes(event: CalendarEvent) {
+  if (event.all_day) return 24 * 60
+  const duration =
+    (new Date(event.ends_at).getTime() - new Date(event.starts_at).getTime()) / 60_000
+  return Math.max(15, duration)
+}
+
+function occurrenceTimeLabel(event: CalendarEvent, day: Date) {
+  const start = new Date(event.starts_at)
+  if (!sameDay(start, day)) return 'Continues'
+  const end = new Date(event.ends_at)
+  return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
 }
 
 function recurrenceLabel(recurrence: Recurrence, customDays: number[]) {
