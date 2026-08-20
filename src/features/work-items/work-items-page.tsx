@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Check, Columns3, List, Plus, X } from 'lucide-react'
+import { Check, Columns3, Filter, List, Plus, Search, Trash2, X } from 'lucide-react'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '@/types/workspace'
 import { WorkItemDetail } from './work-item-detail'
@@ -37,12 +37,85 @@ const statusStyles: Record<WorkItemStatus, string> = {
 }
 const priorities: WorkItemPriority[] = ['critical', 'high', 'medium', 'low']
 const types: WorkItemType[] = ['task', 'bug', 'feature', 'idea', 'research', 'improvement']
+type FilterField =
+  | 'id'
+  | 'ticket'
+  | 'title'
+  | 'description'
+  | 'project'
+  | 'projectId'
+  | 'status'
+  | 'priority'
+  | 'type'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'dueAt'
+  | 'effortMinutes'
+  | 'leverage'
+  | 'importance'
+  | 'specId'
+type FilterOperator =
+  | 'contains'
+  | 'equals'
+  | 'not_equals'
+  | 'is_empty'
+  | 'before'
+  | 'after'
+  | 'greater_than'
+  | 'less_than'
+type FilterRule = {
+  id: string
+  kind: 'rule'
+  field: FilterField
+  operator: FilterOperator
+  value: string
+}
+type FilterGroup = {
+  id: string
+  kind: 'group'
+  combinator: 'and' | 'or'
+  negated: boolean
+  children: FilterNode[]
+}
+type FilterNode = FilterRule | FilterGroup
+const filterFields: Array<{
+  value: FilterField
+  label: string
+  kind: 'text' | 'select' | 'date' | 'number'
+}> = [
+  { value: 'id', label: 'Record ID', kind: 'text' },
+  { value: 'ticket', label: 'Ticket', kind: 'text' },
+  { value: 'title', label: 'Title', kind: 'text' },
+  { value: 'description', label: 'Description', kind: 'text' },
+  { value: 'project', label: 'Project', kind: 'text' },
+  { value: 'projectId', label: 'Project ID', kind: 'text' },
+  { value: 'status', label: 'Status', kind: 'select' },
+  { value: 'priority', label: 'Priority', kind: 'select' },
+  { value: 'type', label: 'Type', kind: 'select' },
+  { value: 'createdAt', label: 'Created', kind: 'date' },
+  { value: 'updatedAt', label: 'Last updated', kind: 'date' },
+  { value: 'dueAt', label: 'Due date', kind: 'date' },
+  { value: 'effortMinutes', label: 'Effort (minutes)', kind: 'number' },
+  { value: 'leverage', label: 'Leverage', kind: 'number' },
+  { value: 'importance', label: 'Importance', kind: 'number' },
+  { value: 'specId', label: 'Plan ID', kind: 'text' },
+]
+const emptyFilter: FilterGroup = {
+  id: 'root',
+  kind: 'group',
+  combinator: 'and',
+  negated: false,
+  children: [],
+}
 
 export function WorkItemsPage() {
   const { workItems, projects, addWorkItem, updateWorkItem, addProject, source, error } =
     useWorkspace()
   const [view, setView] = useState<'list' | 'board'>('board')
   const [activeStatus, setActiveStatus] = useState<WorkItemStatus | 'all'>('all')
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterGroup>(emptyFilter)
+  const [showFilters, setShowFilters] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('item'),
@@ -55,13 +128,22 @@ export function WorkItemsPage() {
   const [type, setType] = useState<WorkItemType>('task')
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropStatus, setDropStatus] = useState<WorkItemStatus | null>(null)
+  const labels = useMemo(() => ticketLabels(workItems), [workItems])
   const visible = useMemo(
     () =>
-      activeStatus === 'all' ? workItems : workItems.filter((item) => item.status === activeStatus),
-    [activeStatus, workItems],
+      workItems.filter((item) => {
+        const project = projects.find((entry) => entry.id === item.projectId)?.name ?? ''
+        const ticket = labels.get(item.id) ?? ''
+        const matchesStatus = activeStatus === 'all' || item.status === activeStatus
+        return (
+          matchesStatus &&
+          matchesSearch(item, project, ticket, search) &&
+          matchesGroup(item, project, ticket, filters)
+        )
+      }),
+    [activeStatus, filters, labels, projects, search, workItems],
   )
   const selectedItem = workItems.find((item) => item.id === selectedId) ?? null
-  const labels = useMemo(() => ticketLabels(workItems), [workItems])
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
     if (!title.trim() || !projectId) return
@@ -228,7 +310,34 @@ export function WorkItemsPage() {
           </div>
         </form>
       )}
-      <div className="mt-10 flex flex-wrap items-center gap-1">
+      <div className="mt-10 flex flex-wrap items-center gap-2">
+        <label className="relative min-w-[15rem] flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search every work-item field"
+            className="w-full rounded-lg bg-black/20 py-2 pl-9 pr-3 text-sm text-zinc-200 outline-none ring-1 ring-white/[.08] placeholder:text-zinc-600 focus:ring-sky-300/40"
+          />
+        </label>
+        <button
+          onClick={() => setShowFilters(true)}
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 transition ${filters.children.length ? 'bg-sky-400/[.12] text-sky-100 ring-sky-300/40' : 'bg-white/[.035] text-zinc-300 ring-white/[.08] hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+        >
+          <Filter className="size-4" />
+          Filters{filters.children.length ? ` (${countFilterRules(filters)})` : ''}
+        </button>
+        {(search || filters.children.length > 0) && (
+          <button
+            onClick={() => {
+              setSearch('')
+              setFilters(emptyFilter)
+            }}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Clear
+          </button>
+        )}
         <div className="flex rounded-lg bg-white/[0.035] p-1">
           {(
             [
@@ -258,6 +367,17 @@ export function WorkItemsPage() {
           ))}
         </div>
       </div>
+      <p className="mt-3 text-xs text-zinc-600">
+        {visible.length} of {workItems.length} work items shown
+      </p>
+      {showFilters && (
+        <FilterBuilder
+          value={filters}
+          projects={projects}
+          onChange={setFilters}
+          onClose={() => setShowFilters(false)}
+        />
+      )}
       {view === 'board' ? (
         <Kanban
           items={visible}
@@ -306,6 +426,272 @@ export function WorkItemsPage() {
         </>
       )}
     </section>
+  )
+}
+
+function FilterBuilder({
+  value,
+  projects,
+  onChange,
+  onClose,
+}: {
+  value: FilterGroup
+  projects: ReturnType<typeof useWorkspace>['projects']
+  onChange: (value: FilterGroup) => void
+  onClose: () => void
+}) {
+  const addRule = (groupId: string) => onChange(addFilterNode(value, groupId, newFilterRule()))
+  const addGroup = (groupId: string) =>
+    onChange(
+      addFilterNode(value, groupId, {
+        id: filterId(),
+        kind: 'group',
+        combinator: 'and',
+        negated: false,
+        children: [newFilterRule()],
+      }),
+    )
+  return (
+    <>
+      <button
+        aria-label="Close filters"
+        onClick={onClose}
+        className="fixed inset-0 z-20 cursor-default bg-black/45"
+      />
+      <aside className="fixed inset-y-0 right-0 z-30 w-full max-w-2xl overflow-y-auto bg-[#121216] p-5 shadow-2xl ring-1 ring-white/[.08] sm:p-7">
+        <div className="flex items-start justify-between gap-5">
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-.02em]">Filter work items</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Combine any field with nested AND, OR, and NOT rules.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Done
+          </button>
+        </div>
+        <FilterGroupEditor
+          group={value}
+          projects={projects}
+          depth={0}
+          root
+          onAddRule={addRule}
+          onAddGroup={addGroup}
+          onChange={(id, changes) => onChange(updateFilterNode(value, id, changes) as FilterGroup)}
+          onRemove={(id) => onChange(removeFilterNode(value, id))}
+        />
+        <div className="mt-6 flex items-center justify-between border-t border-white/[.07] pt-5">
+          <button
+            onClick={() => onChange(emptyFilter)}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Reset all filters
+          </button>
+          <p className="text-xs text-zinc-600">
+            {countFilterRules(value)} active rule{countFilterRules(value) === 1 ? '' : 's'}
+          </p>
+        </div>
+      </aside>
+    </>
+  )
+}
+
+function FilterGroupEditor({
+  group,
+  projects,
+  depth,
+  root = false,
+  onAddRule,
+  onAddGroup,
+  onChange,
+  onRemove,
+}: {
+  group: FilterGroup
+  projects: ReturnType<typeof useWorkspace>['projects']
+  depth: number
+  root?: boolean
+  onAddRule: (id: string) => void
+  onAddGroup: (id: string) => void
+  onChange: (id: string, changes: Partial<FilterNode>) => void
+  onRemove: (id: string) => void
+}) {
+  return (
+    <section
+      className={`mt-6 rounded-xl border border-white/[.08] bg-white/[.025] p-3 ${depth ? 'ml-3' : ''}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Match</span>
+        <button
+          onClick={() =>
+            onChange(group.id, { combinator: group.combinator === 'and' ? 'or' : 'and' })
+          }
+          className="rounded-md bg-white/[.08] px-2 py-1 text-xs font-medium text-zinc-200 hover:bg-[#29282b]"
+        >
+          {group.combinator === 'and' ? 'ALL (AND)' : 'ANY (OR)'}
+        </button>
+        <button
+          onClick={() => onChange(group.id, { negated: !group.negated })}
+          className={`rounded-md px-2 py-1 text-xs font-medium ${group.negated ? 'bg-rose-400/[.15] text-rose-200' : 'bg-white/[.05] text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]'}`}
+        >
+          NOT {group.negated ? 'on' : 'off'}
+        </button>
+        {!root && (
+          <button
+            onClick={() => onRemove(group.id)}
+            className="ml-auto rounded-md p-1 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200"
+            aria-label="Remove nested group"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="mt-3 space-y-2">
+        {group.children.map((child) =>
+          child.kind === 'rule' ? (
+            <FilterRuleEditor
+              key={child.id}
+              rule={child}
+              projects={projects}
+              onChange={(changes) => onChange(child.id, changes)}
+              onRemove={() => onRemove(child.id)}
+            />
+          ) : (
+            <FilterGroupEditor
+              key={child.id}
+              group={child}
+              projects={projects}
+              depth={depth + 1}
+              onAddRule={onAddRule}
+              onAddGroup={onAddGroup}
+              onChange={onChange}
+              onRemove={onRemove}
+            />
+          ),
+        )}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => onAddRule(group.id)}
+          className="rounded-lg bg-white/[.06] px-3 py-2 text-xs text-zinc-300 hover:bg-[#29282b] hover:text-[#eee9df]"
+        >
+          + Condition
+        </button>
+        <button
+          onClick={() => onAddGroup(group.id)}
+          className="rounded-lg px-3 py-2 text-xs text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+        >
+          + Nested group
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function FilterRuleEditor({
+  rule,
+  projects,
+  onChange,
+  onRemove,
+}: {
+  rule: FilterRule
+  projects: ReturnType<typeof useWorkspace>['projects']
+  onChange: (changes: Partial<FilterRule>) => void
+  onRemove: () => void
+}) {
+  const field = filterFields.find((entry) => entry.value === rule.field) ?? filterFields[0]
+  const operators =
+    field.kind === 'number'
+      ? [
+          ['equals', 'is'],
+          ['not_equals', 'is not'],
+          ['greater_than', 'greater than'],
+          ['less_than', 'less than'],
+          ['is_empty', 'is empty'],
+        ]
+      : field.kind === 'date'
+        ? [
+            ['equals', 'on'],
+            ['before', 'before'],
+            ['after', 'after'],
+            ['is_empty', 'is empty'],
+          ]
+        : [
+            ['contains', 'contains'],
+            ['equals', 'is'],
+            ['not_equals', 'is not'],
+            ['is_empty', 'is empty'],
+          ]
+  const choices =
+    rule.field === 'status'
+      ? statuses.map((entry) => entry.value)
+      : rule.field === 'priority'
+        ? priorities
+        : rule.field === 'type'
+          ? types
+          : rule.field === 'project'
+            ? projects.map((project) => project.name)
+            : null
+  return (
+    <div className="grid gap-2 rounded-lg bg-black/20 p-2 sm:grid-cols-[minmax(8rem,1fr)_minmax(7rem,.8fr)_minmax(8rem,1fr)_auto]">
+      <select
+        value={rule.field}
+        onChange={(event) =>
+          onChange({ field: event.target.value as FilterField, operator: 'contains', value: '' })
+        }
+        className="forge-select px-2 py-2 text-xs"
+      >
+        {filterFields.map((entry) => (
+          <option key={entry.value} value={entry.value}>
+            {entry.label}
+          </option>
+        ))}
+      </select>
+      <select
+        value={rule.operator}
+        onChange={(event) => onChange({ operator: event.target.value as FilterOperator })}
+        className="forge-select px-2 py-2 text-xs"
+      >
+        {operators.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {rule.operator === 'is_empty' ? (
+        <p className="px-2 py-2 text-xs text-zinc-600">No value required</p>
+      ) : choices ? (
+        <select
+          value={rule.value}
+          onChange={(event) => onChange({ value: event.target.value })}
+          className="forge-select px-2 py-2 text-xs"
+        >
+          <option value="">Choose…</option>
+          {choices.map((choice) => (
+            <option key={choice} value={choice}>
+              {choice}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={field.kind === 'date' ? 'date' : field.kind === 'number' ? 'number' : 'text'}
+          value={rule.value}
+          onChange={(event) => onChange({ value: event.target.value })}
+          placeholder="Value"
+          className="rounded-md bg-white/[.04] px-2 py-2 text-xs text-zinc-200 outline-none ring-1 ring-white/[.07] focus:ring-sky-300/40"
+        />
+      )}
+      <button
+        onClick={onRemove}
+        className="rounded-md p-2 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200"
+        aria-label="Remove condition"
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
   )
 }
 
@@ -487,4 +873,149 @@ function nextStatus(status: WorkItemStatus): WorkItemStatus {
 }
 function labelForStatus(status: WorkItemStatus) {
   return statuses.find((item) => item.value === status)?.label ?? status
+}
+
+function filterId() {
+  return `filter-${crypto.randomUUID()}`
+}
+function newFilterRule(): FilterRule {
+  return { id: filterId(), kind: 'rule', field: 'title', operator: 'contains', value: '' }
+}
+function addFilterNode(group: FilterGroup, groupId: string, node: FilterNode): FilterGroup {
+  if (group.id === groupId) return { ...group, children: [...group.children, node] }
+  return {
+    ...group,
+    children: group.children.map((child) =>
+      child.kind === 'group' ? addFilterNode(child, groupId, node) : child,
+    ),
+  }
+}
+function updateFilterNode(node: FilterNode, id: string, changes: Partial<FilterNode>): FilterNode {
+  if (node.id === id) return { ...node, ...changes } as FilterNode
+  if (node.kind === 'group')
+    return { ...node, children: node.children.map((child) => updateFilterNode(child, id, changes)) }
+  return node
+}
+function removeFilterNode(group: FilterGroup, id: string): FilterGroup {
+  return {
+    ...group,
+    children: group.children
+      .filter((child) => child.id !== id)
+      .map((child) => (child.kind === 'group' ? removeFilterNode(child, id) : child)),
+  }
+}
+function countFilterRules(node: FilterNode): number {
+  return node.kind === 'rule'
+    ? 1
+    : node.children.reduce((total, child) => total + countFilterRules(child), 0)
+}
+function matchesSearch(item: WorkItem, project: string, ticket: string, query: string) {
+  if (!query.trim()) return true
+  const text = [
+    ticket,
+    item.id,
+    item.title,
+    item.description,
+    project,
+    item.projectId,
+    item.status,
+    item.priority,
+    item.type,
+    item.createdAt,
+    item.updatedAt,
+    item.specId ?? '',
+    item.dueAt ?? '',
+    item.effortMinutes ?? '',
+    item.leverage ?? '',
+    item.importance ?? '',
+  ]
+    .join(' ')
+    .toLowerCase()
+  return query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .every((term) => text.includes(term))
+}
+function matchesGroup(
+  item: WorkItem,
+  project: string,
+  ticket: string,
+  group: FilterGroup,
+): boolean {
+  if (!group.children.length) return true
+  const checks = group.children.map((node) =>
+    node.kind === 'group'
+      ? matchesGroup(item, project, ticket, node)
+      : matchesRule(item, project, ticket, node),
+  )
+  const result = group.combinator === 'and' ? checks.every(Boolean) : checks.some(Boolean)
+  return group.negated ? !result : result
+}
+function matchesRule(item: WorkItem, project: string, ticket: string, rule: FilterRule) {
+  const value = filterValue(item, project, ticket, rule.field)
+  if (rule.operator === 'is_empty') return value === null || value === ''
+  if (value === null || value === '' || !rule.value) return false
+  const field = filterFields.find((entry) => entry.value === rule.field)
+  if (field?.kind === 'number') {
+    const left = Number(value),
+      right = Number(rule.value)
+    if (Number.isNaN(left) || Number.isNaN(right)) return false
+    return rule.operator === 'equals'
+      ? left === right
+      : rule.operator === 'not_equals'
+        ? left !== right
+        : rule.operator === 'greater_than'
+          ? left > right
+          : rule.operator === 'less_than'
+            ? left < right
+            : false
+  }
+  if (field?.kind === 'date') {
+    const left = new Date(String(value)).getTime(),
+      right = new Date(`${rule.value}T00:00:00`).getTime()
+    if (Number.isNaN(left) || Number.isNaN(right)) return false
+    return rule.operator === 'equals'
+      ? new Date(left).toDateString() === new Date(right).toDateString()
+      : rule.operator === 'before'
+        ? left < right
+        : rule.operator === 'after'
+          ? left > right
+          : false
+  }
+  const left = String(value).toLowerCase(),
+    right = rule.value.toLowerCase()
+  return rule.operator === 'contains'
+    ? left.includes(right)
+    : rule.operator === 'equals'
+      ? left === right
+      : rule.operator === 'not_equals'
+        ? left !== right
+        : false
+}
+function filterValue(
+  item: WorkItem,
+  project: string,
+  ticket: string,
+  field: FilterField,
+): string | number | null {
+  const values: Record<FilterField, string | number | null> = {
+    id: item.id,
+    ticket,
+    title: item.title,
+    description: item.description,
+    project,
+    projectId: item.projectId,
+    status: item.status,
+    priority: item.priority,
+    type: item.type,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    dueAt: item.dueAt ?? null,
+    effortMinutes: item.effortMinutes ?? null,
+    leverage: item.leverage ?? null,
+    importance: item.importance ?? null,
+    specId: item.specId ?? null,
+  }
+  return values[field]
 }
