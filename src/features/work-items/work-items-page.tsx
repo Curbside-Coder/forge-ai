@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Columns3, Filter, Link2, List, Plus, Search, Share2, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
@@ -109,6 +109,13 @@ const emptyFilter: FilterGroup = {
   negated: false,
   children: [],
 }
+type SavedWorkItemView = {
+  id: string
+  name: string
+  filter_definition: unknown
+  updated_at: string
+}
+type SharedWorkItemView = { id: string; name: string; token: string; created_at: string }
 
 export function WorkItemsPage() {
   const { user } = useAuth()
@@ -120,6 +127,9 @@ export function WorkItemsPage() {
   const [filters, setFilters] = useState<FilterGroup>(emptyFilter)
   const [showFilters, setShowFilters] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showSavedViews, setShowSavedViews] = useState(false)
+  const [savedViews, setSavedViews] = useState<SavedWorkItemView[]>([])
+  const [selectedSavedViewId, setSelectedSavedViewId] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('item'),
@@ -148,6 +158,32 @@ export function WorkItemsPage() {
     [activeStatus, filters, labels, projects, search, workItems],
   )
   const selectedItem = workItems.find((item) => item.id === selectedId) ?? null
+  const loadSavedViews = async () => {
+    if (!supabase || !user) return
+    const { data } = await supabase
+      .from('work_item_saved_views')
+      .select('id,name,filter_definition,updated_at')
+      .order('updated_at', { ascending: false })
+    setSavedViews((data ?? []) as SavedWorkItemView[])
+  }
+  useEffect(() => {
+    const timer = setTimeout(() => void loadSavedViews(), 0)
+    return () => clearTimeout(timer)
+    // The view list only changes on an authenticated-user transition or explicit mutations below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
+  const currentViewDefinition = () => ({ search, activeStatus, filters })
+  const applySavedView = (saved: SavedWorkItemView) => {
+    const definition = saved.filter_definition as Partial<{
+      search: string
+      activeStatus: WorkItemStatus | 'all'
+      filters: FilterGroup
+    }>
+    setSearch(definition.search ?? '')
+    setActiveStatus(definition.activeStatus ?? 'all')
+    setFilters(definition.filters?.kind === 'group' ? definition.filters : emptyFilter)
+    setSelectedSavedViewId(saved.id)
+  }
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
     if (!title.trim() || !projectId) return
@@ -339,6 +375,29 @@ export function WorkItemsPage() {
           <Filter className="size-4" />
           Filters{filters.children.length ? ` (${countFilterRules(filters)})` : ''}
         </button>
+        <select
+          aria-label="Saved work item views"
+          value={selectedSavedViewId}
+          onChange={(event) => {
+            const saved = savedViews.find((view) => view.id === event.target.value)
+            if (saved) applySavedView(saved)
+          }}
+          className="forge-select max-w-48 px-3 py-2 text-sm"
+        >
+          <option value="">Saved views</option>
+          {savedViews.map((saved) => (
+            <option key={saved.id} value={saved.id}>
+              {saved.name}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowSavedViews(true)}
+          disabled={!user || !supabase}
+          className="rounded-lg bg-white/[.035] px-3 py-2 text-sm text-zinc-300 ring-1 ring-white/[.08] transition hover:bg-[#29282b] hover:text-[#eee9df] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Save / manage
+        </button>
         {(search || filters.children.length > 0) && (
           <button
             onClick={() => {
@@ -398,6 +457,20 @@ export function WorkItemsPage() {
           labels={labels}
           filterDefinition={{ search, activeStatus, filters }}
           onClose={() => setShowShare(false)}
+        />
+      )}
+      {showSavedViews && user && (
+        <SavedViewsDrawer
+          ownerId={user.id}
+          views={savedViews}
+          selectedId={selectedSavedViewId}
+          currentDefinition={currentViewDefinition()}
+          onApply={(saved) => {
+            applySavedView(saved)
+            setShowSavedViews(false)
+          }}
+          onChanged={() => void loadSavedViews()}
+          onClose={() => setShowSavedViews(false)}
         />
       )}
       {view === 'board' ? (
@@ -521,6 +594,149 @@ function FilterBuilder({
   )
 }
 
+function SavedViewsDrawer({
+  ownerId,
+  views,
+  selectedId,
+  currentDefinition,
+  onApply,
+  onChanged,
+  onClose,
+}: {
+  ownerId: string
+  views: SavedWorkItemView[]
+  selectedId: string
+  currentDefinition: unknown
+  onApply: (view: SavedWorkItemView) => void
+  onChanged: () => void
+  onClose: () => void
+}) {
+  const selected = views.find((view) => view.id === selectedId)
+  const [editingId, setEditingId] = useState(selected?.id ?? '')
+  const [name, setName] = useState(selected?.name ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const startNew = () => {
+    setEditingId('')
+    setName('')
+    setError(null)
+  }
+  const edit = (view: SavedWorkItemView) => {
+    setEditingId(view.id)
+    setName(view.name)
+    setError(null)
+  }
+  const save = async () => {
+    if (!supabase || !name.trim()) return
+    setSaving(true)
+    setError(null)
+    const payload = { name: name.trim(), filter_definition: currentDefinition }
+    const { error: issue } = editingId
+      ? await supabase.from('work_item_saved_views').update(payload).eq('id', editingId)
+      : await supabase.from('work_item_saved_views').insert({ ...payload, owner_id: ownerId })
+    setSaving(false)
+    if (issue) setError(issue.message)
+    else {
+      await onChanged()
+      if (!editingId) startNew()
+    }
+  }
+  const remove = async (id: string) => {
+    if (!supabase) return
+    await supabase.from('work_item_saved_views').delete().eq('id', id)
+    if (editingId === id) startNew()
+    onChanged()
+  }
+  return (
+    <>
+      <button
+        aria-label="Close saved views"
+        onClick={onClose}
+        className="fixed inset-0 z-20 cursor-default bg-black/45"
+      />
+      <aside className="fixed inset-y-0 right-0 z-30 flex w-full max-w-xl flex-col overflow-y-auto bg-[#121216] p-5 shadow-2xl ring-1 ring-white/[.08] sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-.02em]">Saved filter views</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Reuse a saved search and filter setup in one selection.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-6 space-y-2">
+          {views.length ? (
+            views.map((view) => (
+              <div
+                key={view.id}
+                className={`flex items-center gap-2 rounded-xl px-3 py-3 ${editingId === view.id ? 'bg-sky-400/[.08] ring-1 ring-sky-300/30' : 'bg-white/[.025]'}`}
+              >
+                <button onClick={() => onApply(view)} className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-medium text-zinc-200">{view.name}</p>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    Updated {formatDateTime(view.updated_at)}
+                  </p>
+                </button>
+                <button
+                  onClick={() => edit(view)}
+                  className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => void remove(view.id)}
+                  className="rounded-md p-1.5 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200"
+                  aria-label={`Delete ${view.name}`}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="rounded-xl bg-white/[.025] px-4 py-8 text-center text-sm text-zinc-500">
+              No saved views yet. Save the filters you are using now.
+            </p>
+          )}
+        </div>
+        <section className="mt-6 border-t border-white/[.07] pt-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium">
+              {editingId ? 'Update saved view' : 'Save current filters'}
+            </h3>
+            {editingId && (
+              <button onClick={startNew} className="text-xs text-sky-200 hover:text-sky-100">
+                Save as new instead
+              </button>
+            )}
+          </div>
+          <label className="mt-4 block text-sm text-zinc-300">
+            View name
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. This week’s critical work"
+              className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 outline-none ring-1 ring-white/[.08] placeholder:text-zinc-600 focus:ring-sky-300/40"
+            />
+          </label>
+          {error && <p className="mt-3 text-sm text-rose-200">{error}</p>}
+          <button
+            onClick={() => void save()}
+            disabled={!name.trim() || saving}
+            className="mt-4 rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-950 disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : editingId ? 'Save current filters' : 'Create saved view'}
+          </button>
+        </section>
+      </aside>
+    </>
+  )
+}
+
 function ShareViewDrawer({
   ownerId,
   items,
@@ -541,6 +757,19 @@ function ShareViewDrawer({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [sharedViews, setSharedViews] = useState<SharedWorkItemView[]>([])
+  const loadSharedViews = async () => {
+    if (!supabase) return
+    const { data } = await supabase
+      .from('shared_work_item_views')
+      .select('id,name,token,created_at')
+      .order('created_at', { ascending: false })
+    setSharedViews((data ?? []) as SharedWorkItemView[])
+  }
+  useEffect(() => {
+    const timer = setTimeout(() => void loadSharedViews(), 0)
+    return () => clearTimeout(timer)
+  }, [])
   const save = async () => {
     if (!supabase || !name.trim()) return
     setSaving(true)
@@ -575,11 +804,17 @@ function ShareViewDrawer({
       return
     }
     setShareUrl(`${window.location.origin}/shared/work-items/${data.token}`)
+    void loadSharedViews()
   }
   const copy = async () => {
     if (!shareUrl) return
     await navigator.clipboard.writeText(shareUrl)
     setCopied(true)
+  }
+  const removeSharedView = async (id: string) => {
+    if (!supabase) return
+    await supabase.from('shared_work_item_views').delete().eq('id', id)
+    void loadSharedViews()
   }
   return (
     <>
@@ -664,6 +899,57 @@ function ShareViewDrawer({
             </p>
           </div>
         )}
+        <section className="mt-8 border-t border-white/[.07] pt-6">
+          <h3 className="font-medium">Shared views</h3>
+          <p className="mt-1 text-sm text-zinc-500">
+            Manage every public, read-only link you have created.
+          </p>
+          <div className="mt-4 space-y-2">
+            {sharedViews.length ? (
+              sharedViews.map((view) => {
+                const url = `${window.location.origin}/shared/work-items/${view.token}`
+                return (
+                  <div
+                    key={view.id}
+                    className="flex items-center gap-2 rounded-xl bg-white/[.025] px-3 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-zinc-200">{view.name}</p>
+                      <p className="mt-1 text-xs text-zinc-600">
+                        Created {formatDateTime(view.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void navigator.clipboard.writeText(url)}
+                      className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+                    >
+                      Copy
+                    </button>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+                    >
+                      Open
+                    </a>
+                    <button
+                      onClick={() => void removeSharedView(view.id)}
+                      className="rounded-md p-1.5 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200"
+                      aria-label={`Delete ${view.name}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                )
+              })
+            ) : (
+              <p className="rounded-xl bg-white/[.025] px-4 py-6 text-center text-sm text-zinc-500">
+                No shared views yet.
+              </p>
+            )}
+          </div>
+        </section>
       </aside>
     </>
   )
