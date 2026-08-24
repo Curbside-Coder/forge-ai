@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Check, Columns3, Filter, List, Plus, Search, Trash2, X } from 'lucide-react'
+import { Check, Columns3, Filter, Link2, List, Plus, Search, Share2, Trash2, X } from 'lucide-react'
+import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
+import { supabase } from '@/lib/supabase'
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '@/types/workspace'
 import { WorkItemDetail } from './work-item-detail'
 import { formatDateTime, idleState, ticketLabels } from './work-item-utils'
@@ -109,6 +111,7 @@ const emptyFilter: FilterGroup = {
 }
 
 export function WorkItemsPage() {
+  const { user } = useAuth()
   const { workItems, projects, addWorkItem, updateWorkItem, addProject, source, error } =
     useWorkspace()
   const [view, setView] = useState<'list' | 'board'>('board')
@@ -116,6 +119,7 @@ export function WorkItemsPage() {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<FilterGroup>(emptyFilter)
   const [showFilters, setShowFilters] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('item'),
@@ -195,6 +199,14 @@ export function WorkItemsPage() {
         >
           <Plus className="size-4" />
           New work item
+        </button>
+        <button
+          onClick={() => setShowShare(true)}
+          disabled={!user || !supabase}
+          className="inline-flex items-center gap-2 rounded-lg bg-white/[.035] px-3 py-2 text-sm text-zinc-300 ring-1 ring-white/[.08] transition hover:bg-[#29282b] hover:text-[#eee9df] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Share2 className="size-4" />
+          Share view
         </button>
       </div>
       {source === 'loading' && (
@@ -378,6 +390,16 @@ export function WorkItemsPage() {
           onClose={() => setShowFilters(false)}
         />
       )}
+      {showShare && user && (
+        <ShareViewDrawer
+          ownerId={user.id}
+          items={visible}
+          projects={projects}
+          labels={labels}
+          filterDefinition={{ search, activeStatus, filters }}
+          onClose={() => setShowShare(false)}
+        />
+      )}
       {view === 'board' ? (
         <Kanban
           items={visible}
@@ -494,6 +516,154 @@ function FilterBuilder({
             {countFilterRules(value)} active rule{countFilterRules(value) === 1 ? '' : 's'}
           </p>
         </div>
+      </aside>
+    </>
+  )
+}
+
+function ShareViewDrawer({
+  ownerId,
+  items,
+  projects,
+  labels,
+  filterDefinition,
+  onClose,
+}: {
+  ownerId: string
+  items: WorkItem[]
+  projects: ReturnType<typeof useWorkspace>['projects']
+  labels: Map<string, string>
+  filterDefinition: unknown
+  onClose: () => void
+}) {
+  const [name, setName] = useState('Work item view')
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const save = async () => {
+    if (!supabase || !name.trim()) return
+    setSaving(true)
+    setError(null)
+    const snapshot = items.map((item) => ({
+      id: item.id,
+      ticket: labels.get(item.id) ?? 'T-?',
+      title: item.title,
+      description: item.description,
+      projectName: projects.find((project) => project.id === item.projectId)?.name ?? '',
+      status: item.status,
+      priority: item.priority,
+      type: item.type,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      dueAt: item.dueAt ?? null,
+      effortMinutes: item.effortMinutes ?? null,
+    }))
+    const { data, error: issue } = await supabase
+      .from('shared_work_item_views')
+      .insert({
+        owner_id: ownerId,
+        name: name.trim(),
+        filter_definition: filterDefinition,
+        items: snapshot,
+      })
+      .select('token')
+      .single()
+    setSaving(false)
+    if (issue || !data) {
+      setError(issue?.message ?? 'Unable to save this shared view.')
+      return
+    }
+    setShareUrl(`${window.location.origin}/shared/work-items/${data.token}`)
+  }
+  const copy = async () => {
+    if (!shareUrl) return
+    await navigator.clipboard.writeText(shareUrl)
+    setCopied(true)
+  }
+  return (
+    <>
+      <button
+        aria-label="Close share view"
+        onClick={onClose}
+        className="fixed inset-0 z-20 cursor-default bg-black/45"
+      />
+      <aside className="fixed inset-y-0 right-0 z-30 flex w-full max-w-xl flex-col overflow-y-auto bg-[#121216] p-5 shadow-2xl ring-1 ring-white/[.08] sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-.02em]">Share this work-item view</h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              Create a read-only link containing the {items.length} items currently shown. It never
+              grants Forge access.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Close
+          </button>
+        </div>
+        {!shareUrl ? (
+          <div className="mt-7">
+            <label className="block text-sm text-zinc-300">
+              View name
+              <input
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. Open client work"
+                className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 outline-none ring-1 ring-white/[.08] placeholder:text-zinc-600 focus:ring-sky-300/40"
+              />
+            </label>
+            <div className="mt-5 rounded-xl bg-white/[.025] p-4 text-sm text-zinc-400">
+              <p className="font-medium text-zinc-200">What visitors can see</p>
+              <p className="mt-2 leading-6">
+                Title, status, priority, type, project, due date, effort, and description for the
+                saved items. Comments, checklists, notes, AI, and editing controls stay private.
+              </p>
+            </div>
+            {error && <p className="mt-4 text-sm text-rose-200">{error}</p>}
+            <button
+              onClick={() => void save()}
+              disabled={saving || !name.trim()}
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-950 disabled:opacity-40"
+            >
+              <Link2 className="size-4" />
+              {saving ? 'Creating secure link…' : 'Create read-only link'}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-7">
+            <p className="text-sm font-medium text-emerald-200">Your view is ready to share.</p>
+            <input
+              readOnly
+              value={shareUrl}
+              onFocus={(event) => event.currentTarget.select()}
+              className="mt-3 w-full rounded-lg bg-black/30 px-3 py-3 text-sm text-zinc-300 outline-none ring-1 ring-white/[.08]"
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => void copy()}
+                className="rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-950"
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+              <a
+                href={shareUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg bg-white/[.07] px-4 py-2.5 text-sm text-zinc-200 hover:bg-[#29282b]"
+              >
+                Preview
+              </a>
+            </div>
+            <p className="mt-5 text-xs leading-5 text-zinc-600">
+              This is a static snapshot. Create a new link whenever you want to share refreshed
+              results.
+            </p>
+          </div>
+        )}
       </aside>
     </>
   )

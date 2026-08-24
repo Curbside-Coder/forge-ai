@@ -10,8 +10,15 @@ import { ProjectsPage } from '@/features/projects/projects-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { WorkItemsPage } from '@/features/work-items/work-items-page'
 import { ReportsPage } from '@/features/reports/reports-page'
+import { SharedWorkItemsPage } from '@/features/work-items/shared-work-items-page'
 
 const rootRoute = createRootRoute({
+  component: () => <Outlet />,
+})
+
+const appRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'app',
   component: () => (
     <AuthGate>
       <AppShell>
@@ -22,61 +29,70 @@ const rootRoute = createRootRoute({
 })
 
 const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/',
   component: DashboardPage,
 })
 const projectsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/projects',
   component: ProjectsPage,
 })
 const workItemsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/work-items',
   component: WorkItemsPage,
 })
 const meetingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/meetings',
   component: MeetingsPage,
 })
 const calendarRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/calendar',
   component: CalendarPage,
 })
 const logsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/logs',
   component: LogsPage,
 })
 const inboxRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/inbox',
   component: InboxPage,
 })
 const settingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/settings',
   component: SettingsPage,
 })
 const reportsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => appRoute,
   path: '/reports',
   component: ReportsPage,
 })
 
+const sharedWorkItemsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/shared/work-items/$token',
+  component: SharedWorkItemsPage,
+})
+
 const routeTree = rootRoute.addChildren([
-  dashboardRoute,
-  projectsRoute,
-  workItemsRoute,
-  meetingsRoute,
-  calendarRoute,
-  logsRoute,
-  inboxRoute,
-  settingsRoute,
-  reportsRoute,
+  appRoute.addChildren([
+    dashboardRoute,
+    projectsRoute,
+    workItemsRoute,
+    meetingsRoute,
+    calendarRoute,
+    logsRoute,
+    inboxRoute,
+    settingsRoute,
+    reportsRoute,
+  ]),
+  sharedWorkItemsRoute,
 ])
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' })
