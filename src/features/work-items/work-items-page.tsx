@@ -665,9 +665,11 @@ function SavedViewsDrawer({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            aria-label="Close share view"
+            title="Close"
+            className="grid size-9 place-items-center rounded-lg text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/50"
           >
-            Close
+            <X className="size-4" />
           </button>
         </div>
         <div className="mt-6 space-y-2">
@@ -838,9 +840,11 @@ function ShareViewDrawer({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            aria-label="Close share view"
+            title="Close"
+            className="grid size-9 place-items-center rounded-lg text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/50"
           >
-            Close
+            <X className="size-4" />
           </button>
         </div>
         {!shareUrl ? (
