@@ -452,6 +452,7 @@ export function WorkItemsPage() {
       {showShare && user && (
         <ShareViewDrawer
           ownerId={user.id}
+          sharedBy={(user.user_metadata.display_name as string | undefined) || 'Forge user'}
           items={visible}
           projects={projects}
           labels={labels}
@@ -739,6 +740,7 @@ function SavedViewsDrawer({
 
 function ShareViewDrawer({
   ownerId,
+  sharedBy,
   items,
   projects,
   labels,
@@ -746,6 +748,7 @@ function ShareViewDrawer({
   onClose,
 }: {
   ownerId: string
+  sharedBy: string
   items: WorkItem[]
   projects: ReturnType<typeof useWorkspace>['projects']
   labels: Map<string, string>
@@ -792,6 +795,7 @@ function ShareViewDrawer({
       .from('shared_work_item_views')
       .insert({
         owner_id: ownerId,
+        shared_by: sharedBy,
         name: name.trim(),
         filter_definition: filterDefinition,
         items: snapshot,
