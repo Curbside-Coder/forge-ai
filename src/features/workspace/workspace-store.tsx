@@ -403,17 +403,22 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       ...(changes.status ? { status: changes.status } : {}),
       ...(changes.priority ? { priority: changes.priority } : {}),
       ...(changes.type ? { type: changes.type } : {}),
+      ...(changes.projectId ? { project_id: changes.projectId } : {}),
       ...(changes.title ? { title: changes.title } : {}),
       ...(changes.description !== undefined ? { description: changes.description } : {}),
     }
+    if (Object.keys(update).length === 0) return
     const { data, error: updateError } = await supabase
       .from('work_items')
       .update(update)
       .eq('id', id)
       .select()
-      .single()
-    if (updateError) {
-      setError(updateError.message)
+      .maybeSingle()
+    if (updateError || !data) {
+      setError(
+        updateError?.message ??
+          'This work item is no longer available. Refresh Forge and try again.',
+      )
       return
     }
     setSnapshot((current) => ({
