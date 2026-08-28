@@ -29,6 +29,7 @@ export function WorkItemDetail({
     addChecklistItem,
     updateChecklistItem,
     deleteWorkItem,
+    projects,
   } = useWorkspace()
   const [comment, setComment] = useState('')
   const [checklistItem, setChecklistItem] = useState('')
@@ -118,6 +119,20 @@ export function WorkItemDetail({
               onChange={(type) => void updateWorkItem(item.id, { type: type as WorkItemType })}
             />
           </div>
+          <label className="mt-4 block text-xs text-zinc-500">
+            Project
+            <select
+              value={item.projectId}
+              onChange={(event) => void updateWorkItem(item.id, { projectId: event.target.value })}
+              className="forge-select mt-1.5 w-full px-2.5 py-2 text-sm text-zinc-300"
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="flex items-center justify-between">
             <h3 className="mt-7 text-sm font-medium">Checklist</h3>
             <span className="text-xs text-zinc-600">

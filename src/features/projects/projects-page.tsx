@@ -115,7 +115,13 @@ export function ProjectsPage() {
                   <Trash2 className="size-4" />
                 </button>
               </div>
-              <h2 className="mt-10 text-lg font-medium tracking-[-0.02em]">{project.name}</h2>
+              <Link
+                to="/work-items"
+                search={{ project: project.id } as never}
+                className="mt-10 block text-lg font-medium tracking-[-0.02em] transition hover:text-sky-100"
+              >
+                {project.name}
+              </Link>
               <p className="mt-1 min-h-10 text-sm leading-5 text-zinc-500">{project.description}</p>
               <div className="mt-7 flex items-center justify-between">
                 <span className="text-sm text-zinc-500">
@@ -123,6 +129,7 @@ export function ProjectsPage() {
                 </span>
                 <Link
                   to="/work-items"
+                  search={{ project: project.id } as never}
                   className="inline-flex items-center gap-1 text-sm text-zinc-400 transition hover:text-white"
                 >
                   Open <ArrowUpRight className="size-3.5" />

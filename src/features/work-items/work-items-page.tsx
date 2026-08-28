@@ -123,6 +123,9 @@ export function WorkItemsPage() {
     useWorkspace()
   const [view, setView] = useState<'list' | 'board'>('board')
   const [activeStatus, setActiveStatus] = useState<WorkItemStatus | 'all'>('all')
+  const [activeProjectId, setActiveProjectId] = useState(
+    () => new URLSearchParams(window.location.search).get('project') ?? 'all',
+  )
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<FilterGroup>(emptyFilter)
   const [showFilters, setShowFilters] = useState(false)
@@ -149,13 +152,15 @@ export function WorkItemsPage() {
         const project = projects.find((entry) => entry.id === item.projectId)?.name ?? ''
         const ticket = labels.get(item.id) ?? ''
         const matchesStatus = activeStatus === 'all' || item.status === activeStatus
+        const matchesProject = activeProjectId === 'all' || item.projectId === activeProjectId
         return (
           matchesStatus &&
+          matchesProject &&
           matchesSearch(item, project, ticket, search) &&
           matchesGroup(item, project, ticket, filters)
         )
       }),
-    [activeStatus, filters, labels, projects, search, workItems],
+    [activeProjectId, activeStatus, filters, labels, projects, search, workItems],
   )
   const selectedItem = workItems.find((item) => item.id === selectedId) ?? null
   const loadSavedViews = async () => {
@@ -172,15 +177,17 @@ export function WorkItemsPage() {
     // The view list only changes on an authenticated-user transition or explicit mutations below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
-  const currentViewDefinition = () => ({ search, activeStatus, filters })
+  const currentViewDefinition = () => ({ search, activeStatus, activeProjectId, filters })
   const applySavedView = (saved: SavedWorkItemView) => {
     const definition = saved.filter_definition as Partial<{
       search: string
       activeStatus: WorkItemStatus | 'all'
+      activeProjectId: string
       filters: FilterGroup
     }>
     setSearch(definition.search ?? '')
     setActiveStatus(definition.activeStatus ?? 'all')
+    setActiveProjectId(definition.activeProjectId ?? 'all')
     setFilters(definition.filters?.kind === 'group' ? definition.filters : emptyFilter)
     setSelectedSavedViewId(saved.id)
   }
@@ -205,7 +212,9 @@ export function WorkItemsPage() {
     setIsCreating(true)
   }
   const openItem = (id: string) => {
-    window.history.pushState({}, '', `/work-items?item=${encodeURIComponent(id)}`)
+    const params = new URLSearchParams(window.location.search)
+    params.set('item', id)
+    window.history.pushState({}, '', `/work-items?${params.toString()}`)
     setSelectedId(id)
   }
   const createProjectHere = async () => {
@@ -218,7 +227,10 @@ export function WorkItemsPage() {
     }
   }
   const closeItem = () => {
-    window.history.pushState({}, '', '/work-items')
+    const params = new URLSearchParams(window.location.search)
+    params.delete('item')
+    const query = params.toString()
+    window.history.pushState({}, '', `/work-items${query ? `?${query}` : ''}`)
     setSelectedId(null)
   }
   return (
@@ -236,6 +248,27 @@ export function WorkItemsPage() {
           <Plus className="size-4" />
           New work item
         </button>
+        <select
+          aria-label="Filter by project"
+          value={activeProjectId}
+          onChange={(event) => {
+            const next = event.target.value
+            setActiveProjectId(next)
+            const params = new URLSearchParams(window.location.search)
+            if (next === 'all') params.delete('project')
+            else params.set('project', next)
+            const query = params.toString()
+            window.history.pushState({}, '', `/work-items${query ? `?${query}` : ''}`)
+          }}
+          className="forge-select max-w-52 px-3 py-2 text-sm"
+        >
+          <option value="all">All projects</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
         <button
           onClick={() => setShowShare(true)}
           disabled={!user || !supabase}
@@ -403,6 +436,11 @@ export function WorkItemsPage() {
             onClick={() => {
               setSearch('')
               setFilters(emptyFilter)
+              setActiveProjectId('all')
+              const params = new URLSearchParams(window.location.search)
+              params.delete('project')
+              const query = params.toString()
+              window.history.pushState({}, '', `/work-items${query ? `?${query}` : ''}`)
             }}
             className="rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
