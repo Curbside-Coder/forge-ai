@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
@@ -1256,19 +1256,23 @@ function TimesheetWorkspace({
                 const row = resolvedDay(day)
                 const payrollPeriod = periodFor(day)
                 return (
-                  <TimesheetRow
-                    key={dateKey(day)}
-                    day={day}
-                    trackerEntries={row.trackerEntries}
-                    override={row.override}
-                    initialTimeIn={row.timeIn}
-                    initialTimeOut={row.timeOut}
-                    initialNotes={row.notes}
-                    rate={payrollPeriod?.hourly_rate ?? 7}
-                    onSaveOverride={onSaveOverride}
-                    onUseTrackerTime={onUseTrackerTime}
-                    onSelect={onSelect}
-                  />
+                  <Fragment key={dateKey(day)}>
+                    {(day.getDate() === 1 || day.getDate() === 16) && (
+                      <PayrollDivider secondHalf={day.getDate() === 16} />
+                    )}
+                    <TimesheetRow
+                      day={day}
+                      trackerEntries={row.trackerEntries}
+                      override={row.override}
+                      initialTimeIn={row.timeIn}
+                      initialTimeOut={row.timeOut}
+                      initialNotes={row.notes}
+                      rate={payrollPeriod?.hourly_rate ?? 7}
+                      onSaveOverride={onSaveOverride}
+                      onUseTrackerTime={onUseTrackerTime}
+                      onSelect={onSelect}
+                    />
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -1357,6 +1361,14 @@ function TimesheetRow({
     ? hoursBetween(timeIn, timeOut)
     : trackerEntries.reduce((total, entry) => total + entry.duration_seconds / 3600, 0)
   const weekend = day.getDay() === 0 || day.getDay() === 6
+  const hasWork = hours > 0
+  const periodTone =
+    day.getDate() <= 15
+      ? 'bg-[linear-gradient(90deg,rgba(14,116,144,0.10),rgba(14,116,144,0.025)_52%,transparent_82%)]'
+      : 'bg-[linear-gradient(90deg,rgba(109,40,217,0.11),rgba(109,40,217,0.025)_52%,transparent_82%)]'
+  const weekendTone = hasWork
+    ? 'bg-[linear-gradient(90deg,rgba(180,83,9,0.22),rgba(251,191,36,0.07)_55%,transparent_85%)]'
+    : 'bg-slate-400/[0.065]'
   const save = async () => {
     if (!timeIn && !timeOut && !notes) return
     setSaving(true)
@@ -1364,9 +1376,11 @@ function TimesheetRow({
     setSaving(false)
   }
   return (
-    <tr className={`border-t border-white/[0.055] ${weekend ? 'bg-slate-400/[0.025]' : ''}`}>
+    <tr className={`border-t border-white/[0.055] ${weekend ? weekendTone : periodTone}`}>
       <td className="px-4 py-2.5 align-top">
-        <span className="font-medium text-zinc-300">{day.getDate()}</span>
+        <span className={`font-medium ${weekend && hasWork ? 'text-amber-100' : 'text-zinc-300'}`}>
+          {day.getDate()}
+        </span>
         <span className="ml-2 text-xs text-zinc-600">
           {day.toLocaleDateString([], { weekday: 'short' })}
         </span>
@@ -1394,14 +1408,15 @@ function TimesheetRow({
       <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-300">
         {hours.toFixed(2)}
       </td>
-      <td className="px-3 py-2">
-        <input
+      <td className="px-3 py-2 align-top">
+        <textarea
           aria-label={`Notes ${dateKey(day)}`}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           onBlur={() => void save()}
           placeholder="What did you work on?"
-          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+          rows={2}
+          className="min-h-[3.5rem] w-full resize-y rounded-lg bg-black/20 px-2.5 py-2 text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
         />
       </td>
       <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-400">
@@ -1442,6 +1457,27 @@ function TimesheetRow({
           <span className="ml-1 text-xs text-zinc-600">{trackerEntries.length} parcels</span>
         )}
         {saving && <span className="ml-2 text-[10px] text-emerald-200">Saving</span>}
+      </td>
+    </tr>
+  )
+}
+
+function PayrollDivider({ secondHalf }: { secondHalf: boolean }) {
+  return (
+    <tr
+      className={
+        secondHalf
+          ? 'bg-[linear-gradient(90deg,rgba(109,40,217,0.32),rgba(109,40,217,0.08),transparent)]'
+          : 'bg-[linear-gradient(90deg,rgba(14,116,144,0.28),rgba(14,116,144,0.08),transparent)]'
+      }
+    >
+      <td
+        colSpan={8}
+        className="border-y border-white/[0.1] px-4 py-2 text-xs font-medium tracking-[0.08em] text-zinc-100"
+      >
+        {secondHalf
+          ? 'SECOND HALF · 16–END · PAYMENT PERIOD'
+          : 'FIRST HALF · 1–15 · PAYMENT PERIOD'}
       </td>
     </tr>
   )
