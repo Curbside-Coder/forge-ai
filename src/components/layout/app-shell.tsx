@@ -29,6 +29,7 @@ const navigation = [
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/reports', label: 'Reports', icon: ChartNoAxesCombined },
   { to: '/time-tracker', label: 'Time tracker', icon: Timer },
+  { to: '/timesheets', label: 'Timesheets', icon: CalendarDays },
 ] as const
 
 export function AppShell({ children }: PropsWithChildren) {

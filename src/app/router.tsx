@@ -84,6 +84,11 @@ const timeTrackerSettingsRoute = createRoute({
   path: '/time-tracker/settings',
   component: () => <TimeTrackerPage settingsOnly />,
 })
+const timesheetsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/timesheets',
+  component: () => <TimeTrackerPage timesheetOnly />,
+})
 
 const sharedWorkItemsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -104,6 +109,7 @@ const routeTree = rootRoute.addChildren([
     reportsRoute,
     timeTrackerRoute,
     timeTrackerSettingsRoute,
+    timesheetsRoute,
   ]),
   sharedWorkItemsRoute,
 ])

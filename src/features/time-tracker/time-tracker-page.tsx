@@ -7,6 +7,8 @@ import {
   Copy,
   KeyRound,
   Clock3,
+  CalendarDays,
+  ExternalLink,
   Play,
   Plus,
   Save,
@@ -15,11 +17,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import { supabase } from '@/lib/supabase'
+import {
+  admiredImportedEntries,
+  admiredImportedPeriods,
+} from '@/features/time-tracker/admired-timesheet-data'
 
 type FieldKind = 'text' | 'select'
 type TrackerField = {
@@ -59,6 +65,22 @@ type DbActiveTimer = {
   page_url: string | null
   page_title: string | null
 }
+type TimesheetPeriod = {
+  id: string
+  project_id: string
+  period_start: string
+  hourly_rate: number
+  wise_link: string
+  wise_note: string
+}
+type TimesheetOverride = {
+  id: string
+  project_id: string
+  entry_date: string
+  started_at: string
+  ended_at: string
+  description: string
+}
 const admiredFields: TrackerField[] = [
   { id: 'client_name', label: 'Client name', type: 'text', defaultValue: 'Admired' },
   { id: 'project_name', label: 'Project name', type: 'text' },
@@ -88,6 +110,7 @@ const admiredFields: TrackerField[] = [
     defaultValue: 'Support Early (06:00 AM - 01:00 PM)',
   },
   { id: 'release', label: 'Release', type: 'text' },
+  { id: 'hourly_rate', label: 'USD per hour', type: 'text', defaultValue: '7' },
   {
     id: 'billing_status',
     label: 'Billing status',
@@ -110,7 +133,8 @@ const formatDuration = (seconds: number) => {
   const secs = seconds % 60
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
-const dateKey = (value: string) => new Date(value).toLocaleDateString('en-CA')
+const dateKey = (value: string | Date) =>
+  (typeof value === 'string' ? new Date(value) : value).toLocaleDateString('en-CA')
 const mapActive = (row: DbActiveTimer): ActiveTimer => ({
   projectId: row.project_id,
   startedAt: row.started_at,
@@ -125,10 +149,36 @@ const defaultsFor = (fields: TrackerField[]) =>
     string
   >
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
+const dateAtTime = (date: Date, time: string) => {
+  const [hours, minutes] = time.split(':').map(Number)
+  const result = new Date(date)
+  result.setHours(hours, minutes, 0, 0)
+  return result
+}
+const inputTime = (value: string) => {
+  const date = new Date(value)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+const hoursBetween = (from: string, to: string) => {
+  if (!from || !to) return 0
+  const [fromHours, fromMinutes] = from.split(':').map(Number)
+  const [toHours, toMinutes] = to.split(':').map(Number)
+  let minutes = toHours * 60 + toMinutes - (fromHours * 60 + fromMinutes)
+  if (minutes < 0) minutes += 24 * 60
+  return minutes / 60
+}
+const money = (value: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
 const asFields = (value: unknown): TrackerField[] =>
   Array.isArray(value) ? (value as TrackerField[]) : []
 
-export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boolean }) {
+export function TimeTrackerPage({
+  settingsOnly = false,
+  timesheetOnly = false,
+}: {
+  settingsOnly?: boolean
+  timesheetOnly?: boolean
+}) {
   const { user } = useAuth()
   const { projects } = useWorkspace()
   const [entries, setEntries] = useState<Entry[]>([])
@@ -145,6 +195,9 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   const [notice, setNotice] = useState<string | null>(null)
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
+  const [periods, setPeriods] = useState<TimesheetPeriod[]>([])
+  const [overrides, setOverrides] = useState<TimesheetOverride[]>([])
+  const attemptedAdmiredImport = useRef(false)
   const currentProject = projects.find((project) => project.id === projectId)
   const fields = useMemo(
     () =>
@@ -164,18 +217,28 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
 
   const load = useCallback(async () => {
     if (!supabase || !user) return
-    const [entryResult, settingsResult, activeResult] = await Promise.all([
-      supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
-      supabase.from('time_tracking_project_settings').select('project_id,fields'),
-      supabase.from('active_time_trackers').select('*').maybeSingle(),
-    ])
-    const issue = entryResult.error ?? settingsResult.error ?? activeResult.error
+    const [entryResult, settingsResult, activeResult, periodResult, overrideResult] =
+      await Promise.all([
+        supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
+        supabase.from('time_tracking_project_settings').select('project_id,fields'),
+        supabase.from('active_time_trackers').select('*').maybeSingle(),
+        supabase.from('time_timesheet_periods').select('*'),
+        supabase.from('time_timesheet_overrides').select('*'),
+      ])
+    const issue =
+      entryResult.error ??
+      settingsResult.error ??
+      activeResult.error ??
+      periodResult.error ??
+      overrideResult.error
     if (issue) {
       setError(issue.message)
       return
     }
     setEntries((entryResult.data ?? []) as Entry[])
     setActive(activeResult.data ? mapActive(activeResult.data as DbActiveTimer) : null)
+    setPeriods((periodResult.data ?? []) as TimesheetPeriod[])
+    setOverrides((overrideResult.data ?? []) as TimesheetOverride[])
     setSettings(
       Object.fromEntries(
         (settingsResult.data ?? []).map((row) => [row.project_id, asFields(row.fields)]),
@@ -377,6 +440,140 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   }
   const updateFields = (next: TrackerField[]) =>
     setSettings((current) => ({ ...current, [projectId]: next }))
+  const saveTimesheetOverride = async ({
+    day,
+    timeIn,
+    timeOut,
+    notes,
+  }: {
+    day: Date
+    timeIn: string
+    timeOut: string
+    notes: string
+  }) => {
+    if (!supabase || !user || !projectId) return
+    if (!timeIn || !timeOut) {
+      setNotice('Add both Time in and Time out before saving the day.')
+      return
+    }
+    const started = dateAtTime(day, timeIn)
+    const ended = dateAtTime(day, timeOut)
+    if (ended <= started) ended.setDate(ended.getDate() + 1)
+    const payload = {
+      owner_id: user.id,
+      project_id: projectId,
+      entry_date: dateKey(day),
+      started_at: started.toISOString(),
+      ended_at: ended.toISOString(),
+      description: notes,
+    }
+    const result = await supabase
+      .from('time_timesheet_overrides')
+      .upsert(payload, { onConflict: 'owner_id,project_id,entry_date' })
+    if (result.error) {
+      setError(result.error.message)
+      return
+    }
+    setError(null)
+    setNotice(
+      `${day.toLocaleDateString([], { month: 'short', day: 'numeric' })} is using your override.`,
+    )
+    await load()
+  }
+  const useTrackerTime = async (day: Date) => {
+    if (!supabase || !user || !projectId) return
+    const { error: issue } = await supabase
+      .from('time_timesheet_overrides')
+      .delete()
+      .eq('owner_id', user.id)
+      .eq('project_id', projectId)
+      .eq('entry_date', dateKey(day))
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setNotice(
+      `${day.toLocaleDateString([], { month: 'short', day: 'numeric' })} now follows timer parcels.`,
+    )
+    await load()
+  }
+  const savePeriod = async (
+    period: Pick<TimesheetPeriod, 'period_start' | 'hourly_rate' | 'wise_link' | 'wise_note'>,
+  ) => {
+    if (!supabase || !user || !projectId) return
+    const { error: issue } = await supabase
+      .from('time_timesheet_periods')
+      .upsert(
+        { ...period, owner_id: user.id, project_id: projectId },
+        { onConflict: 'owner_id,project_id,period_start' },
+      )
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setNotice(`Payroll details for ${period.period_start} saved.`)
+    await load()
+  }
+  const importAdmiredWorkbook = useCallback(async () => {
+    if (!supabase || !user || !projectId || currentProject?.name.toLowerCase() !== 'admired') return
+    if (entries.some((entry) => entry.source === 'timesheet-import')) {
+      setNotice('The Admired workbook has already been imported.')
+      return
+    }
+    const importedEntries = admiredImportedEntries.map((entry) => {
+      const day = new Date(`${entry.date}T00:00:00`)
+      const started = dateAtTime(day, entry.timeIn)
+      const ended = dateAtTime(day, entry.timeOut)
+      if (ended <= started) ended.setDate(ended.getDate() + 1)
+      return {
+        owner_id: user.id,
+        project_id: projectId,
+        started_at: started.toISOString(),
+        ended_at: ended.toISOString(),
+        duration_seconds: Math.round(entry.hours * 3600),
+        description: entry.note,
+        billing_status: 'Billable',
+        approval_status: 'Not Submitted',
+        custom_fields: { hourly_rate: String(entry.rate), imported_from: 'ADMIRED TIMESHEET.xlsx' },
+        source: 'timesheet-import',
+      }
+    })
+    const { error: entryIssue } = await supabase.from('time_entries').insert(importedEntries)
+    if (entryIssue) {
+      setError(entryIssue.message)
+      return
+    }
+    const { error: periodIssue } = await supabase.from('time_timesheet_periods').upsert(
+      admiredImportedPeriods.map((period) => ({
+        owner_id: user.id,
+        project_id: projectId,
+        period_start: period.periodStart,
+        hourly_rate: period.rate,
+        wise_link: period.wiseLink,
+        wise_note: period.wiseNote,
+      })),
+      { onConflict: 'owner_id,project_id,period_start' },
+    )
+    if (periodIssue) {
+      setError(periodIssue.message)
+      return
+    }
+    setNotice(
+      `Imported ${admiredImportedEntries.length} Admired entries and payment-period details.`,
+    )
+    await load()
+  }, [currentProject?.name, entries, load, projectId, user])
+  useEffect(() => {
+    if (
+      !timesheetOnly ||
+      attemptedAdmiredImport.current ||
+      currentProject?.name.toLowerCase() !== 'admired' ||
+      entries.some((entry) => entry.source === 'timesheet-import')
+    )
+      return
+    attemptedAdmiredImport.current = true
+    void importAdmiredWorkbook()
+  }, [currentProject?.name, entries, importAdmiredWorkbook, timesheetOnly])
 
   if (settingsOnly)
     return (
@@ -396,6 +593,36 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
         secondsByDay={secondsByDay}
       />
     )
+  if (timesheetOnly)
+    return (
+      <>
+        <TimesheetWorkspace
+          projects={projects}
+          projectId={projectId}
+          setProjectId={setProjectId}
+          projectName={currentProject?.name}
+          month={month}
+          setMonth={setMonth}
+          entries={entries}
+          periods={periods}
+          overrides={overrides}
+          notice={notice}
+          error={error}
+          onSaveOverride={saveTimesheetOverride}
+          onUseTrackerTime={useTrackerTime}
+          onSavePeriod={savePeriod}
+          onImportAdmired={importAdmiredWorkbook}
+          onSelect={setSelectedEntry}
+        />
+        {selectedEntry && (
+          <TimeEntryDrawer
+            entry={selectedEntry}
+            projects={projects}
+            onClose={() => setSelectedEntry(null)}
+          />
+        )}
+      </>
+    )
   return (
     <section>
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -412,6 +639,13 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
         >
           <Settings2 className="size-4" />
           Project fields & calendar
+        </Link>
+        <Link
+          to="/timesheets"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/[0.06] px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+        >
+          <CalendarDays className="size-4" />
+          Monthly timesheets
         </Link>
       </div>
       {(error || notice) && (
@@ -578,16 +812,6 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
             )}
           </div>
         </div>
-      </div>
-      <div className="mt-10">
-        <TimeCalendar
-          month={month}
-          setMonth={setMonth}
-          calendar={calendar}
-          secondsByDay={secondsByDay}
-          entries={entries}
-          onSelect={setSelectedEntry}
-        />
       </div>
       {selectedEntry && (
         <TimeEntryDrawer
@@ -812,6 +1036,537 @@ function TrackerSettings({
           secondsByDay={secondsByDay}
           entries={entries}
         />
+      </div>
+    </section>
+  )
+}
+
+function TimesheetWorkspace({
+  projects,
+  projectId,
+  setProjectId,
+  projectName,
+  month,
+  setMonth,
+  entries,
+  periods,
+  overrides,
+  notice,
+  error,
+  onSaveOverride,
+  onUseTrackerTime,
+  onSavePeriod,
+  onImportAdmired,
+  onSelect,
+}: {
+  projects: { id: string; name: string }[]
+  projectId: string
+  setProjectId: (id: string) => void
+  projectName?: string
+  month: Date
+  setMonth: (date: Date) => void
+  entries: Entry[]
+  periods: TimesheetPeriod[]
+  overrides: TimesheetOverride[]
+  notice: string | null
+  error: string | null
+  onSaveOverride: (row: {
+    day: Date
+    timeIn: string
+    timeOut: string
+    notes: string
+  }) => Promise<void>
+  onUseTrackerTime: (day: Date) => Promise<void>
+  onSavePeriod: (
+    period: Pick<TimesheetPeriod, 'period_start' | 'hourly_rate' | 'wise_link' | 'wise_note'>,
+  ) => Promise<void>
+  onImportAdmired: () => Promise<void>
+  onSelect: (entry: Entry) => void
+}) {
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate() },
+        (_, index) => new Date(month.getFullYear(), month.getMonth(), index + 1),
+      ),
+    [month],
+  )
+  const monthEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.project_id === projectId &&
+          new Date(entry.started_at).getFullYear() === month.getFullYear() &&
+          new Date(entry.started_at).getMonth() === month.getMonth(),
+      ),
+    [entries, month, projectId],
+  )
+  const byDay = useMemo(() => {
+    const map = new Map<string, Entry[]>()
+    monthEntries.forEach((entry) => {
+      const key = dateKey(entry.started_at)
+      map.set(key, [...(map.get(key) ?? []), entry])
+    })
+    return map
+  }, [monthEntries])
+  const periodStart = (day: Date) =>
+    `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${day.getDate() <= 15 ? '01' : '16'}`
+  const monthPeriods = useMemo(
+    () => periods.filter((period) => period.project_id === projectId),
+    [periods, projectId],
+  )
+  const periodFor = (day: Date) =>
+    monthPeriods.find((period) => period.period_start === periodStart(day))
+  const resolvedDay = (day: Date) => {
+    const trackerEntries = byDay.get(dateKey(day)) ?? []
+    const override = overrides.find(
+      (item) => item.project_id === projectId && item.entry_date === dateKey(day),
+    )
+    const trackerSeconds = trackerEntries.reduce(
+      (total, entry) => total + entry.duration_seconds,
+      0,
+    )
+    const first = [...trackerEntries].sort((a, b) => a.started_at.localeCompare(b.started_at))[0]
+    const last = [...trackerEntries].sort((a, b) => b.ended_at.localeCompare(a.ended_at))[0]
+    return {
+      trackerEntries,
+      override,
+      timeIn: override ? inputTime(override.started_at) : first ? inputTime(first.started_at) : '',
+      timeOut: override ? inputTime(override.ended_at) : last ? inputTime(last.ended_at) : '',
+      hours: override
+        ? (new Date(override.ended_at).getTime() - new Date(override.started_at).getTime()) /
+          3_600_000
+        : trackerSeconds / 3600,
+      notes:
+        override?.description ??
+        trackerEntries
+          .map((entry) => entry.description)
+          .filter(Boolean)
+          .join(' · '),
+    }
+  }
+  const summary = (startDay: number, endDay: number) =>
+    days
+      .filter((day) => day.getDate() >= startDay && day.getDate() <= endDay)
+      .reduce((total, day) => total + resolvedDay(day).hours, 0)
+  const firstHours = summary(1, 15)
+  const secondHours = summary(16, days.length)
+  return (
+    <section>
+      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-[-0.03em]">Monthly timesheets</h1>
+          <p className="mt-2 text-zinc-500">
+            Payroll-ready rollups from every tracked parcel, with an explicit override when you need
+            it.
+          </p>
+        </div>
+        <Link
+          to="/time-tracker"
+          className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-[#eee9df]"
+        >
+          <TimerReset className="size-4" /> Back to timer
+        </Link>
+      </div>
+      {(error || notice) && (
+        <p
+          className={`mt-6 rounded-xl px-4 py-3 text-sm ${error ? 'bg-rose-400/10 text-rose-200' : 'bg-emerald-400/10 text-emerald-100'}`}
+        >
+          {error || notice}
+        </p>
+      )}
+      <div className="mt-6 flex flex-col gap-3 rounded-xl bg-white/[0.025] p-4 ring-1 ring-white/[0.06] sm:flex-row sm:items-end sm:justify-between">
+        <label className="block text-sm text-zinc-400">
+          Project
+          <select
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+            className="mt-2 block w-full min-w-56 px-3 py-2.5 text-zinc-100"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {projectName?.toLowerCase() === 'admired' && (
+          <button
+            onClick={() => void onImportAdmired()}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/[0.06] px-3 py-2.5 text-sm text-zinc-300 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <Download className="size-4" /> Import Admired workbook
+          </button>
+        )}
+      </div>
+      <div className="mt-6 overflow-hidden rounded-2xl bg-white/[0.035] ring-1 ring-white/[0.07]">
+        <div className="flex flex-col gap-4 border-b border-white/[0.07] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 font-medium text-zinc-100">
+              <CalendarDays className="size-4 text-emerald-200" />
+              Monthly timesheet
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {projectName ?? 'Select a project'} · tracker parcels are totaled per date before
+              payroll is calculated.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setMonth(startOfMonth(new Date()))}
+              className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+              aria-label="Previous month"
+              className="rounded-lg p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <span className="min-w-28 text-center text-sm font-medium text-zinc-200">
+              {month.toLocaleDateString([], { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              aria-label="Next month"
+              className="rounded-lg p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
+            <thead className="bg-black/20 text-xs uppercase tracking-[0.08em] text-zinc-500">
+              <tr>
+                <th className="w-28 px-4 py-3 font-medium">Date</th>
+                <th className="w-32 px-3 py-3 font-medium">Time in</th>
+                <th className="w-32 px-3 py-3 font-medium">Time out</th>
+                <th className="w-28 px-3 py-3 text-right font-medium">Hours worked</th>
+                <th className="min-w-60 px-3 py-3 font-medium">Notes</th>
+                <th className="w-28 px-3 py-3 text-right font-medium">USD / hour</th>
+                <th className="w-28 px-3 py-3 text-right font-medium">USD total</th>
+                <th className="w-20 px-3 py-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {days.map((day) => {
+                const row = resolvedDay(day)
+                const payrollPeriod = periodFor(day)
+                return (
+                  <TimesheetRow
+                    key={dateKey(day)}
+                    day={day}
+                    trackerEntries={row.trackerEntries}
+                    override={row.override}
+                    initialTimeIn={row.timeIn}
+                    initialTimeOut={row.timeOut}
+                    initialNotes={row.notes}
+                    rate={payrollPeriod?.hourly_rate ?? 7}
+                    onSaveOverride={onSaveOverride}
+                    onUseTrackerTime={onUseTrackerTime}
+                    onSelect={onSelect}
+                  />
+                )
+              })}
+            </tbody>
+            <tfoot className="border-t border-white/[0.1] bg-black/15 text-sm">
+              <TimesheetTotal
+                label="1–15"
+                hours={firstHours}
+                rate={periodFor(days[0])?.hourly_rate ?? 7}
+              />
+              <TimesheetTotal
+                label="16–end"
+                hours={secondHours}
+                rate={periodFor(days[days.length - 1])?.hourly_rate ?? 7}
+              />
+              <TimesheetTotal
+                label="Monthly total"
+                hours={firstHours + secondHours}
+                amount={
+                  firstHours * (periodFor(days[0])?.hourly_rate ?? 7) +
+                  secondHours * (periodFor(days[days.length - 1])?.hourly_rate ?? 7)
+                }
+                strong
+              />
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <PayrollPeriodEditor
+          periodStart={periodStart(days[0])}
+          hours={firstHours}
+          projectName={projectName}
+          period={periodFor(days[0])}
+          onSave={onSavePeriod}
+        />
+        <PayrollPeriodEditor
+          periodStart={periodStart(days[days.length - 1])}
+          hours={secondHours}
+          projectName={projectName}
+          period={periodFor(days[days.length - 1])}
+          onSave={onSavePeriod}
+        />
+      </div>
+    </section>
+  )
+}
+
+function TimesheetRow({
+  day,
+  trackerEntries,
+  override,
+  initialTimeIn,
+  initialTimeOut,
+  initialNotes,
+  rate,
+  onSaveOverride,
+  onUseTrackerTime,
+  onSelect,
+}: {
+  day: Date
+  trackerEntries: Entry[]
+  override?: TimesheetOverride
+  initialTimeIn: string
+  initialTimeOut: string
+  initialNotes: string
+  rate: number
+  onSaveOverride: (row: {
+    day: Date
+    timeIn: string
+    timeOut: string
+    notes: string
+  }) => Promise<void>
+  onUseTrackerTime: (day: Date) => Promise<void>
+  onSelect: (entry: Entry) => void
+}) {
+  const [timeIn, setTimeIn] = useState(initialTimeIn)
+  const [timeOut, setTimeOut] = useState(initialTimeOut)
+  const [notes, setNotes] = useState(initialNotes)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    setTimeIn(initialTimeIn)
+    setTimeOut(initialTimeOut)
+    setNotes(initialNotes)
+  }, [initialNotes, initialTimeIn, initialTimeOut, override?.id])
+  const hours = override
+    ? hoursBetween(timeIn, timeOut)
+    : trackerEntries.reduce((total, entry) => total + entry.duration_seconds / 3600, 0)
+  const weekend = day.getDay() === 0 || day.getDay() === 6
+  const save = async () => {
+    if (!timeIn && !timeOut && !notes) return
+    setSaving(true)
+    await onSaveOverride({ day, timeIn, timeOut, notes })
+    setSaving(false)
+  }
+  return (
+    <tr className={`border-t border-white/[0.055] ${weekend ? 'bg-slate-400/[0.025]' : ''}`}>
+      <td className="px-4 py-2.5 align-top">
+        <span className="font-medium text-zinc-300">{day.getDate()}</span>
+        <span className="ml-2 text-xs text-zinc-600">
+          {day.toLocaleDateString([], { weekday: 'short' })}
+        </span>
+      </td>
+      <td className="px-3 py-2">
+        <input
+          aria-label={`Time in ${dateKey(day)}`}
+          type="time"
+          value={timeIn}
+          onChange={(event) => setTimeIn(event.target.value)}
+          onBlur={() => void save()}
+          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          aria-label={`Time out ${dateKey(day)}`}
+          type="time"
+          value={timeOut}
+          onChange={(event) => setTimeOut(event.target.value)}
+          onBlur={() => void save()}
+          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+        />
+      </td>
+      <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-300">
+        {hours.toFixed(2)}
+      </td>
+      <td className="px-3 py-2">
+        <input
+          aria-label={`Notes ${dateKey(day)}`}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          onBlur={() => void save()}
+          placeholder="What did you work on?"
+          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+        />
+      </td>
+      <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-400">
+        {rate ? money(rate) : 'Set rate'}
+      </td>
+      <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-100">
+        {rate ? money(hours * rate) : '—'}
+      </td>
+      <td className="px-3 py-2 text-right">
+        {override ? (
+          <button
+            type="button"
+            onClick={() => void onUseTrackerTime(day)}
+            className="rounded-lg px-2 py-1 text-xs text-amber-100 hover:bg-amber-400/10"
+          >
+            Use tracker
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void save()}
+            className="rounded-lg px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Override
+          </button>
+        )}
+        {trackerEntries[0] && (
+          <button
+            type="button"
+            onClick={() => onSelect(trackerEntries[0])}
+            aria-label={`View ${dateKey(day)} time entry`}
+            className="rounded-lg p-2 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <ExternalLink className="size-4" />
+          </button>
+        )}
+        {trackerEntries.length > 1 && (
+          <span className="ml-1 text-xs text-zinc-600">{trackerEntries.length} parcels</span>
+        )}
+        {saving && <span className="ml-2 text-[10px] text-emerald-200">Saving</span>}
+      </td>
+    </tr>
+  )
+}
+
+function TimesheetTotal({
+  label,
+  hours,
+  rate = 0,
+  amount,
+  strong = false,
+}: {
+  label: string
+  hours: number
+  rate?: number
+  amount?: number
+  strong?: boolean
+}) {
+  return (
+    <tr className={strong ? 'bg-white/[0.04] text-zinc-100' : 'text-zinc-400'}>
+      <td colSpan={3} className="px-4 py-3 font-medium">
+        {label}
+      </td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums">{hours.toFixed(2)} h</td>
+      <td colSpan={2} />
+      <td className="px-3 py-3 text-right font-mono tabular-nums text-emerald-100">
+        {money(amount ?? hours * rate)}
+      </td>
+      <td />
+    </tr>
+  )
+}
+
+function PayrollPeriodEditor({
+  periodStart,
+  hours,
+  projectName,
+  period,
+  onSave,
+}: {
+  periodStart: string
+  hours: number
+  projectName?: string
+  period?: TimesheetPeriod
+  onSave: (
+    period: Pick<TimesheetPeriod, 'period_start' | 'hourly_rate' | 'wise_link' | 'wise_note'>,
+  ) => Promise<void>
+}) {
+  const [rate, setRate] = useState(String(period?.hourly_rate ?? 7))
+  const [wiseLink, setWiseLink] = useState(period?.wise_link ?? '')
+  const resolvedRate = Number(rate) || 0
+  const start = new Date(`${periodStart}T00:00:00`)
+  const end = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate() === 1 ? 15 : new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate(),
+  )
+  const wiseNote = `Christian Foster | ${start.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}–${end.toLocaleDateString([], { day: 'numeric', year: start.getFullYear() === end.getFullYear() ? undefined : 'numeric' })} | ${hours.toFixed(2)}h x ${money(resolvedRate)} = ${money(hours * resolvedRate)} c/o ${projectName ?? 'Forge'}`
+  useEffect(() => {
+    setRate(String(period?.hourly_rate ?? 7))
+    setWiseLink(period?.wise_link ?? '')
+  }, [period?.hourly_rate, period?.wise_link, periodStart])
+  return (
+    <section className="rounded-2xl bg-white/[0.035] p-5 ring-1 ring-white/[0.07]">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-medium text-zinc-100">
+          {start.getDate() === 1 ? 'First-half payment' : 'Second-half payment'}
+        </h2>
+        <span className="font-mono text-sm text-emerald-100">{money(hours * resolvedRate)}</span>
+      </div>
+      <p className="mt-1 text-sm text-zinc-500">
+        {start.toLocaleDateString([], { month: 'long', day: 'numeric' })} –{' '}
+        {end.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })} ·{' '}
+        {hours.toFixed(2)} h
+      </p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-[9rem_1fr]">
+        <label className="text-sm text-zinc-400">
+          USD / hour
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={rate}
+            onChange={(event) => setRate(event.target.value)}
+            className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 outline-none ring-1 ring-white/[0.08] focus:ring-emerald-200/40"
+          />
+        </label>
+        <label className="text-sm text-zinc-400">
+          Wise link <span className="text-zinc-600">(one per period)</span>
+          <input
+            value={wiseLink}
+            onChange={(event) => setWiseLink(event.target.value)}
+            placeholder="https://wise.com/pay/..."
+            className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.08] focus:ring-emerald-200/40"
+          />
+        </label>
+      </div>
+      <label className="mt-4 block text-sm text-zinc-400">
+        Wise note <span className="text-zinc-600">(computed)</span>
+        <textarea
+          readOnly
+          value={wiseNote}
+          className="mt-2 min-h-20 w-full resize-y rounded-lg bg-black/20 px-3 py-2.5 text-sm text-zinc-300 outline-none ring-1 ring-white/[0.08]"
+        />
+      </label>
+      <div className="mt-4 flex justify-between gap-3">
+        <button
+          onClick={() => void navigator.clipboard.writeText(wiseNote)}
+          className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+        >
+          Copy Wise note
+        </button>
+        <button
+          onClick={() =>
+            void onSave({
+              period_start: periodStart,
+              hourly_rate: resolvedRate,
+              wise_link: wiseLink,
+              wise_note: wiseNote,
+            })
+          }
+          className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-white"
+        >
+          Save payment details
+        </button>
       </div>
     </section>
   )
