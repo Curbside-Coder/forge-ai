@@ -11,6 +11,7 @@ import { SettingsPage } from '@/features/settings/settings-page'
 import { WorkItemsPage } from '@/features/work-items/work-items-page'
 import { ReportsPage } from '@/features/reports/reports-page'
 import { SharedWorkItemsPage } from '@/features/work-items/shared-work-items-page'
+import { TimeTrackerPage } from '@/features/time-tracker/time-tracker-page'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -73,6 +74,16 @@ const reportsRoute = createRoute({
   path: '/reports',
   component: ReportsPage,
 })
+const timeTrackerRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/time-tracker',
+  component: TimeTrackerPage,
+})
+const timeTrackerSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/time-tracker/settings',
+  component: () => <TimeTrackerPage settingsOnly />,
+})
 
 const sharedWorkItemsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -91,6 +102,8 @@ const routeTree = rootRoute.addChildren([
     inboxRoute,
     settingsRoute,
     reportsRoute,
+    timeTrackerRoute,
+    timeTrackerSettingsRoute,
   ]),
   sharedWorkItemsRoute,
 ])

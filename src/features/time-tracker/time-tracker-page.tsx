@@ -1,0 +1,730 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleStop,
+  Clock3,
+  Play,
+  Plus,
+  Save,
+  Settings2,
+  TimerReset,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import { useAuth } from '@/features/auth/auth-provider'
+import { useWorkspace } from '@/features/workspace/workspace-store'
+import { supabase } from '@/lib/supabase'
+
+type FieldKind = 'text' | 'select'
+type TrackerField = {
+  id: string
+  label: string
+  type: FieldKind
+  options?: string[]
+  defaultValue?: string
+}
+type Entry = {
+  id: string
+  project_id: string
+  started_at: string
+  ended_at: string
+  duration_seconds: number
+  description: string
+  billing_status: string
+  approval_status: string
+  custom_fields: Record<string, string>
+  source: string
+  page_url: string | null
+  page_title: string | null
+}
+type ActiveTimer = {
+  projectId: string
+  startedAt: string
+  description: string
+  values: Record<string, string>
+  pageUrl?: string
+  pageTitle?: string
+}
+
+const activeKey = 'forge.time-tracker.active'
+const admiredFields: TrackerField[] = [
+  { id: 'client_name', label: 'Client name', type: 'text', defaultValue: 'Admired' },
+  { id: 'project_name', label: 'Project name', type: 'text' },
+  { id: 'job_name', label: 'Job name', type: 'text' },
+  { id: 'employee_id', label: 'Employee ID', type: 'text', defaultValue: 'EXP_PH_0011' },
+  { id: 'email', label: 'Email ID', type: 'text', defaultValue: 'christian@expressionable.com' },
+  { id: 'first_name', label: 'First name', type: 'text', defaultValue: 'Christian' },
+  { id: 'last_name', label: 'Last name', type: 'text', defaultValue: 'Foster' },
+  {
+    id: 'reporting_to',
+    label: 'Reporting to',
+    type: 'text',
+    defaultValue: 'EXP_TPA_0001 Amit Bhalla',
+  },
+  { id: 'department', label: 'Department', type: 'text', defaultValue: 'Technology' },
+  {
+    id: 'designation',
+    label: 'Designation',
+    type: 'text',
+    defaultValue: 'Full-Stack Web Developer',
+  },
+  { id: 'location', label: 'Location', type: 'text', defaultValue: 'Philippines' },
+  {
+    id: 'shift_details',
+    label: 'Shift details',
+    type: 'text',
+    defaultValue: 'Support Early (06:00 AM - 01:00 PM)',
+  },
+  { id: 'release', label: 'Release', type: 'text' },
+  {
+    id: 'billing_status',
+    label: 'Billing status',
+    type: 'select',
+    options: ['Billable', 'Non-billable'],
+    defaultValue: 'Billable',
+  },
+  {
+    id: 'approval_status',
+    label: 'Approval status',
+    type: 'select',
+    options: ['Not Submitted', 'Submitted', 'Approved', 'Rejected'],
+    defaultValue: 'Not Submitted',
+  },
+]
+
+const formatDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+const dateKey = (value: string) => new Date(value).toLocaleDateString('en-CA')
+const fromStorage = (): ActiveTimer | null => {
+  try {
+    return JSON.parse(localStorage.getItem(activeKey) ?? 'null') as ActiveTimer | null
+  } catch {
+    return null
+  }
+}
+const defaultsFor = (fields: TrackerField[]) =>
+  Object.fromEntries(fields.map((field) => [field.id, field.defaultValue ?? ''])) as Record<
+    string,
+    string
+  >
+const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
+const asFields = (value: unknown): TrackerField[] =>
+  Array.isArray(value) ? (value as TrackerField[]) : []
+
+export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boolean }) {
+  const { user } = useAuth()
+  const { projects } = useWorkspace()
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [settings, setSettings] = useState<Record<string, TrackerField[]>>({})
+  const [projectId, setProjectId] = useState('')
+  const [active, setActive] = useState<ActiveTimer | null>(fromStorage)
+  const [elapsed, setElapsed] = useState(0)
+  const [description, setDescription] = useState(
+    () => new URLSearchParams(window.location.search).get('note') ?? '',
+  )
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [month, setMonth] = useState(() => startOfMonth(new Date()))
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const currentProject = projects.find((project) => project.id === projectId)
+  const fields = useMemo(
+    () =>
+      settings[projectId] ??
+      (currentProject?.name.toLowerCase() === 'admired' ? admiredFields : []),
+    [currentProject?.name, projectId, settings],
+  )
+  const calendar = useMemo(() => calendarDays(month), [month])
+  const secondsByDay = useMemo(() => {
+    const next: Record<string, number> = {}
+    entries.forEach((entry) => {
+      next[dateKey(entry.started_at)] =
+        (next[dateKey(entry.started_at)] ?? 0) + entry.duration_seconds
+    })
+    return next
+  }, [entries])
+
+  const load = useCallback(async () => {
+    if (!supabase || !user) return
+    const [entryResult, settingsResult] = await Promise.all([
+      supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
+      supabase.from('time_tracking_project_settings').select('project_id,fields'),
+    ])
+    const issue = entryResult.error ?? settingsResult.error
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setEntries((entryResult.data ?? []) as Entry[])
+    setSettings(
+      Object.fromEntries(
+        (settingsResult.data ?? []).map((row) => [row.project_id, asFields(row.fields)]),
+      ),
+    )
+  }, [user])
+  useEffect(() => {
+    void load()
+  }, [load])
+  useEffect(() => {
+    if (!projectId && projects[0])
+      setProjectId(
+        projects.find((item) => item.name.toLowerCase() === 'admired')?.id ?? projects[0].id,
+      )
+  }, [projectId, projects])
+  useEffect(() => {
+    if (!active) {
+      setElapsed(0)
+      return
+    }
+    const refresh = () =>
+      setElapsed(
+        Math.max(0, Math.floor((Date.now() - new Date(active.startedAt).getTime()) / 1000)),
+      )
+    refresh()
+    const timer = window.setInterval(refresh, 1000)
+    return () => window.clearInterval(timer)
+  }, [active])
+  useEffect(() => {
+    if (!active || active.projectId !== projectId) return
+    setDescription(active.description)
+    setValues(active.values)
+  }, [active, projectId])
+  useEffect(() => {
+    if (active) return
+    setValues(defaultsFor(fields))
+  }, [active, projectId, fields])
+
+  const start = () => {
+    if (!projectId) return
+    const incoming = new URLSearchParams(window.location.search)
+    const next: ActiveTimer = {
+      projectId,
+      startedAt: new Date().toISOString(),
+      description,
+      values,
+      pageUrl: incoming.get('pageUrl') ?? undefined,
+      pageTitle: incoming.get('pageTitle') ?? undefined,
+    }
+    localStorage.setItem(activeKey, JSON.stringify(next))
+    setActive(next)
+    setNotice(`Tracking ${currentProject?.name ?? 'this project'}.`)
+  }
+  const stop = async () => {
+    if (!active || !supabase || !user) return
+    const endedAt = new Date().toISOString()
+    const duration = Math.max(
+      1,
+      Math.floor((new Date(endedAt).getTime() - new Date(active.startedAt).getTime()) / 1000),
+    )
+    const { error: issue } = await supabase.from('time_entries').insert({
+      owner_id: user.id,
+      project_id: active.projectId,
+      started_at: active.startedAt,
+      ended_at: endedAt,
+      duration_seconds: duration,
+      description: active.description,
+      billing_status: active.values.billing_status || 'Billable',
+      approval_status: active.values.approval_status || 'Not Submitted',
+      custom_fields: active.values,
+      source: active.pageUrl ? 'chrome-extension' : 'forge',
+      page_url: active.pageUrl ?? null,
+      page_title: active.pageTitle ?? null,
+    })
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    localStorage.removeItem(activeKey)
+    setActive(null)
+    setDescription('')
+    setNotice('Time entry saved to Forge.')
+    await load()
+  }
+  const saveFields = async () => {
+    if (!supabase || !user || !projectId) return
+    const next = settings[projectId] ?? fields
+    const { error: issue } = await supabase
+      .from('time_tracking_project_settings')
+      .upsert(
+        { project_id: projectId, owner_id: user.id, fields: next },
+        { onConflict: 'project_id' },
+      )
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setSettings((current) => ({ ...current, [projectId]: next }))
+    setNotice(`${currentProject?.name ?? 'Project'} time-log fields saved.`)
+  }
+  const updateFields = (next: TrackerField[]) =>
+    setSettings((current) => ({ ...current, [projectId]: next }))
+
+  if (settingsOnly)
+    return (
+      <TrackerSettings
+        projectId={projectId}
+        setProjectId={setProjectId}
+        projects={projects}
+        fields={fields}
+        updateFields={updateFields}
+        saveFields={saveFields}
+        notice={notice}
+        error={error}
+        entries={entries}
+        month={month}
+        setMonth={setMonth}
+        calendar={calendar}
+        secondsByDay={secondsByDay}
+      />
+    )
+  return (
+    <section>
+      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-sm text-zinc-500">Evidence of where your time goes</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Time tracker</h1>
+          <p className="mt-2 text-zinc-500">
+            Track active work in Forge or capture the page you are working on from Chrome.
+          </p>
+        </div>
+        <Link
+          to="/time-tracker/settings"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/[0.06] px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+        >
+          <Settings2 className="size-4" />
+          Project fields & calendar
+        </Link>
+      </div>
+      {(error || notice) && (
+        <p
+          className={`mt-6 rounded-xl px-4 py-3 text-sm ${error ? 'bg-rose-400/10 text-rose-200' : 'bg-emerald-400/10 text-emerald-100'}`}
+        >
+          {error || notice}
+        </p>
+      )}
+      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="rounded-2xl bg-white/[0.04] p-6 ring-1 ring-white/[0.07]">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-500">
+                {active
+                  ? `Started ${new Date(active.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                  : 'Ready when you are'}
+              </p>
+              <p className="mt-2 tabular-nums text-5xl font-semibold tracking-[-0.05em] text-[#eee9df]">
+                {formatDuration(elapsed)}
+              </p>
+            </div>
+            <button
+              onClick={() => void (active ? stop() : start())}
+              disabled={!projectId}
+              className={`inline-flex size-14 items-center justify-center rounded-2xl transition disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-rose-400/15 text-rose-200 hover:bg-rose-400/25' : 'bg-emerald-400/15 text-emerald-100 hover:bg-emerald-400/25'}`}
+              aria-label={active ? 'Stop timer' : 'Start timer'}
+            >
+              {active ? <CircleStop className="size-6" /> : <Play className="ml-0.5 size-6" />}
+            </button>
+          </div>
+          <div className="mt-7 grid gap-4 sm:grid-cols-2">
+            <label className="text-sm text-zinc-400">
+              Project
+              <select
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                disabled={Boolean(active)}
+                className="mt-2 w-full px-3 py-2.5 text-zinc-100"
+              >
+                <option value="">Choose a project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-zinc-400">
+              What are you working on?
+              <input
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                disabled={Boolean(active)}
+                placeholder="Describe the work while it is fresh"
+                className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 outline-none ring-1 ring-white/[0.08] placeholder:text-zinc-600 focus:ring-white/30"
+              />
+            </label>
+          </div>
+          {fields.length > 0 && (
+            <details className="mt-5 rounded-xl bg-black/15 p-4">
+              <summary className="cursor-pointer text-sm font-medium text-zinc-300">
+                {currentProject?.name} time-log fields
+              </summary>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {fields.map((field) => (
+                  <FieldInput
+                    key={field.id}
+                    field={field}
+                    value={values[field.id] ?? ''}
+                    disabled={Boolean(active)}
+                    onChange={(value) =>
+                      setValues((current) => ({ ...current, [field.id]: value }))
+                    }
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+        <div className="rounded-2xl bg-white/[0.025] p-5 ring-1 ring-white/[0.06]">
+          <h2 className="font-medium text-zinc-200">Recent time</h2>
+          <div className="mt-4 space-y-1">
+            {entries.slice(0, 7).map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-xl px-3 py-3 transition hover:bg-white/[0.045]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <p className="min-w-0 text-sm text-zinc-300">
+                    {entry.description || 'Untitled time entry'}
+                  </p>
+                  <span className="shrink-0 font-mono text-xs text-zinc-500">
+                    {formatDuration(entry.duration_seconds)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {new Date(entry.started_at).toLocaleString([], {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
+              </div>
+            ))}
+            {entries.length === 0 && (
+              <p className="py-7 text-center text-sm text-zinc-600">
+                Stopped timers will appear here.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-10">
+        <TimeCalendar
+          month={month}
+          setMonth={setMonth}
+          calendar={calendar}
+          secondsByDay={secondsByDay}
+          entries={entries}
+        />
+      </div>
+    </section>
+  )
+}
+
+function FieldInput({
+  field,
+  value,
+  disabled,
+  onChange,
+}: {
+  field: TrackerField
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="text-sm text-zinc-400">
+      {field.label}
+      {field.type === 'select' ? (
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className="mt-2 w-full px-3 py-2.5 text-zinc-100"
+        >
+          {(field.options ?? []).map((option) => (
+            <option key={option}>{option}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className="mt-2 w-full rounded-lg bg-black/20 px-3 py-2.5 text-zinc-100 outline-none ring-1 ring-white/[0.08] focus:ring-white/30"
+        />
+      )}
+    </label>
+  )
+}
+
+function TrackerSettings({
+  projectId,
+  setProjectId,
+  projects,
+  fields,
+  updateFields,
+  saveFields,
+  notice,
+  error,
+  entries,
+  month,
+  setMonth,
+  calendar,
+  secondsByDay,
+}: {
+  projectId: string
+  setProjectId: (id: string) => void
+  projects: { id: string; name: string }[]
+  fields: TrackerField[]
+  updateFields: (fields: TrackerField[]) => void
+  saveFields: () => Promise<void>
+  notice: string | null
+  error: string | null
+  entries: Entry[]
+  month: Date
+  setMonth: (value: Date) => void
+  calendar: Date[]
+  secondsByDay: Record<string, number>
+}) {
+  const edit = (index: number, change: Partial<TrackerField>) =>
+    updateFields(
+      fields.map((field, fieldIndex) => (fieldIndex === index ? { ...field, ...change } : field)),
+    )
+  return (
+    <section>
+      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-sm text-zinc-500">Project-specific logging template</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Time-tracking settings</h1>
+          <p className="mt-2 text-zinc-500">
+            Adapt the timer to the fields each project actually needs.
+          </p>
+        </div>
+        <Link
+          to="/time-tracker"
+          className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-[#eee9df]"
+        >
+          <TimerReset className="size-4" />
+          Back to timer
+        </Link>
+      </div>
+      {(error || notice) && (
+        <p
+          className={`mt-6 rounded-xl px-4 py-3 text-sm ${error ? 'bg-rose-400/10 text-rose-200' : 'bg-emerald-400/10 text-emerald-100'}`}
+        >
+          {error || notice}
+        </p>
+      )}
+      <div className="mt-8 rounded-2xl bg-white/[0.035] p-6 ring-1 ring-white/[0.07]">
+        <label className="block max-w-sm text-sm text-zinc-400">
+          Project
+          <select
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+            className="mt-2 w-full px-3 py-2.5 text-zinc-100"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="mt-8 overflow-x-auto">
+          <table className="w-full min-w-[42rem] text-left text-sm">
+            <thead className="text-xs uppercase tracking-[0.1em] text-zinc-600">
+              <tr>
+                <th className="pb-3 font-medium">Field</th>
+                <th className="pb-3 font-medium">Type</th>
+                <th className="pb-3 font-medium">Default / options</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {fields.map((field, index) => (
+                <tr key={field.id} className="border-t border-white/[0.06]">
+                  <td className="py-3 pr-3">
+                    <input
+                      value={field.label}
+                      onChange={(event) => edit(index, { label: event.target.value })}
+                      className="w-full rounded-lg bg-black/20 px-3 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.08]"
+                    />
+                  </td>
+                  <td className="py-3 pr-3">
+                    <select
+                      value={field.type}
+                      onChange={(event) => edit(index, { type: event.target.value as FieldKind })}
+                      className="w-full px-3 py-2 text-zinc-200"
+                    >
+                      <option value="text">Text</option>
+                      <option value="select">Select</option>
+                    </select>
+                  </td>
+                  <td className="py-3 pr-3">
+                    <input
+                      value={
+                        field.type === 'select'
+                          ? (field.options ?? []).join(', ')
+                          : (field.defaultValue ?? '')
+                      }
+                      onChange={(event) =>
+                        edit(
+                          index,
+                          field.type === 'select'
+                            ? {
+                                options: event.target.value
+                                  .split(',')
+                                  .map((value) => value.trim())
+                                  .filter(Boolean),
+                              }
+                            : { defaultValue: event.target.value },
+                        )
+                      }
+                      placeholder={
+                        field.type === 'select' ? 'Comma-separated options' : 'Optional default'
+                      }
+                      className="w-full rounded-lg bg-black/20 px-3 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.08]"
+                    />
+                  </td>
+                  <td className="py-3">
+                    <button
+                      onClick={() =>
+                        updateFields(fields.filter((_, fieldIndex) => fieldIndex !== index))
+                      }
+                      aria-label={`Remove ${field.label}`}
+                      className="rounded-lg p-2 text-zinc-500 hover:bg-rose-400/10 hover:text-rose-200"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-6 flex flex-wrap justify-between gap-3">
+          <button
+            onClick={() =>
+              updateFields([
+                ...fields,
+                { id: crypto.randomUUID(), label: 'New field', type: 'text' },
+              ])
+            }
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <Plus className="size-4" />
+            Add field
+          </button>
+          <button
+            onClick={() => void saveFields()}
+            className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-white"
+          >
+            <Save className="size-4" />
+            Save template
+          </button>
+        </div>
+      </div>
+      <div className="mt-8">
+        <TimeCalendar
+          month={month}
+          setMonth={setMonth}
+          calendar={calendar}
+          secondsByDay={secondsByDay}
+          entries={entries}
+        />
+      </div>
+    </section>
+  )
+}
+
+function TimeCalendar({
+  month,
+  setMonth,
+  calendar,
+  secondsByDay,
+  entries,
+}: {
+  month: Date
+  setMonth: (value: Date) => void
+  calendar: Date[]
+  secondsByDay: Record<string, number>
+  entries: Entry[]
+}) {
+  return (
+    <div className="rounded-2xl bg-white/[0.035] p-5 ring-1 ring-white/[0.07]">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-medium text-zinc-200">Tracked time calendar</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            See the evidence behind your weekly and monthly reporting.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+            aria-label="Previous month"
+            className="rounded-lg p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="min-w-28 text-center text-sm text-zinc-300">
+            {month.toLocaleDateString([], { month: 'long', year: 'numeric' })}
+          </span>
+          <button
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+            aria-label="Next month"
+            className="rounded-lg p-2 text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      </div>
+      <div className="mt-5 grid grid-cols-7 text-center text-xs text-zinc-600">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+          <div key={day} className="py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl bg-white/[0.05]">
+        {calendar.map((day) => {
+          const key = day.toLocaleDateString('en-CA')
+          const seconds = secondsByDay[key] ?? 0
+          const inMonth = day.getMonth() === month.getMonth()
+          const dayEntries = entries.filter((entry) => dateKey(entry.started_at) === key)
+          return (
+            <div
+              key={key}
+              className={`min-h-24 bg-[#111114] p-2 ${!inMonth ? 'bg-[#0d0d0f] text-zinc-700' : day.getDay() === 0 || day.getDay() === 6 ? 'bg-slate-400/[0.035]' : ''}`}
+            >
+              <span className="text-xs">{day.getDate()}</span>
+              {seconds > 0 && (
+                <div
+                  title={dayEntries.map((entry) => entry.description).join('\n')}
+                  className="mt-2 rounded-md bg-emerald-400/10 px-1.5 py-1 text-[11px] font-medium text-emerald-100"
+                >
+                  <Clock3 className="mr-1 inline size-3" />
+                  {formatDuration(seconds)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function calendarDays(month: Date) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1)
+  const start = new Date(first)
+  start.setDate(first.getDate() - first.getDay())
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start)
+    day.setDate(start.getDate() + index)
+    return day
+  })
+}

@@ -11,6 +11,7 @@ import {
   Menu,
   Search,
   Settings,
+  Timer,
   X,
 } from 'lucide-react'
 import { useMemo, useState, type PropsWithChildren } from 'react'
@@ -27,6 +28,7 @@ const navigation = [
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/reports', label: 'Reports', icon: ChartNoAxesCombined },
+  { to: '/time-tracker', label: 'Time tracker', icon: Timer },
 ] as const
 
 export function AppShell({ children }: PropsWithChildren) {

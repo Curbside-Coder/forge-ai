@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forge Time Tracker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <div class="brand"><span>F</span><strong>Forge</strong></div>
+      <p id="page" class="page">Reading current browser page…</p>
+      <label
+        >Forge address<input
+          id="forgeUrl"
+          type="url"
+          placeholder="https://forge.christianfoster.dev"
+      /></label>
+      <label
+        >Work note<textarea id="note" placeholder="What are you doing on this page?"></textarea>
+      </label>
+      <button id="open">Track this in Forge</button>
+      <p class="hint">
+        Forge opens with this page’s context ready. Start and stop the timer there so your private
+        data stays in Forge.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
