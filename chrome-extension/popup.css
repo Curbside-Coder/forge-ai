@@ -40,7 +40,8 @@ label {
   font-size: 12px;
 }
 input,
-textarea {
+textarea,
+select {
   box-sizing: border-box;
   width: 100%;
   margin-top: 6px;
@@ -58,7 +59,8 @@ textarea {
   resize: vertical;
 }
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: rgba(196, 181, 253, 0.65);
 }
 button {
@@ -86,6 +88,14 @@ button:hover {
   margin: 0;
   color: #a7f3d0;
   font-size: 12px;
+}
+.timer #project {
+  color: #ecfdf5;
+  font-weight: 700;
+}
+.timer #startedAt {
+  margin-top: 5px;
+  color: #86efac;
 }
 .timer strong {
   display: block;

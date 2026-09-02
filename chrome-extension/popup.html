@@ -25,13 +25,23 @@
       </label>
       <button id="connect">Connect / refresh timer</button>
       <section id="timer" class="timer" hidden>
-        <p id="status">No timer is active.</p>
+        <p id="project">Project</p>
+        <p id="status">Work note</p>
         <strong id="elapsed">00:00:00</strong>
+        <p id="startedAt">Started at</p>
         <button id="stop" class="stop">Stop shared timer</button>
       </section>
-      <label
-        >Work note<textarea id="note" placeholder="What are you doing on this page?"></textarea>
-      </label>
+      <div id="startControls">
+        <label
+          >Project<select id="projectId">
+            <option value="">Choose a project</option>
+          </select></label
+        >
+        <label
+          >Work note<textarea id="note" placeholder="What are you doing on this page?"></textarea>
+        </label>
+        <button id="start">Start shared timer</button>
+      </div>
       <button id="open">Open Forge Time Tracker</button>
       <p class="hint">
         Forge keeps one secure, shared timer for your account. Pair once to see and stop it from

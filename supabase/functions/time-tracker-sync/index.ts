@@ -47,14 +47,30 @@ Deno.serve(async (request) => {
       .eq('id', credential.id)
     const { data: active, error: activeError } = await admin
       .from('active_time_trackers')
-      .select('*')
+      .select('*, projects(name)')
       .eq('owner_id', credential.owner_id)
       .maybeSingle()
     if (activeError) return response({ error: activeError.message }, 500)
-    if (body.action === 'get') return response({ active })
+    if (body.action === 'get') {
+      const { data: projects, error: projectsError } = await admin
+        .from('projects')
+        .select('id,name')
+        .eq('owner_id', credential.owner_id)
+        .order('name')
+      return projectsError
+        ? response({ error: projectsError.message }, 500)
+        : response({ active, projects })
+    }
     if (body.action === 'start') {
       if (!body.projectId)
-        return response({ error: 'Choose a project in Forge before starting.' }, 400)
+        return response({ error: 'Choose a Forge project before starting.' }, 400)
+      const { data: project } = await admin
+        .from('projects')
+        .select('id')
+        .eq('id', body.projectId)
+        .eq('owner_id', credential.owner_id)
+        .maybeSingle()
+      if (!project) return response({ error: 'That Forge project is unavailable.' }, 404)
       const tracker = {
         owner_id: credential.owner_id,
         project_id: body.projectId,
@@ -67,7 +83,7 @@ Deno.serve(async (request) => {
       const { data, error } = await admin
         .from('active_time_trackers')
         .upsert(tracker, { onConflict: 'owner_id' })
-        .select()
+        .select('*, projects(name)')
         .single()
       return error ? response({ error: error.message }, 500) : response({ active: data })
     }
