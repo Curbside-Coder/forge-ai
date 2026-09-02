@@ -13,6 +13,7 @@ import {
   Settings2,
   TimerReset,
   Trash2,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
@@ -143,6 +144,7 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pairingCode, setPairingCode] = useState<string | null>(null)
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const currentProject = projects.find((project) => project.id === projectId)
   const fields = useMemo(
     () =>
@@ -548,9 +550,10 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
           <h2 className="font-medium text-zinc-200">Recent time</h2>
           <div className="mt-4 space-y-1">
             {entries.slice(0, 7).map((entry) => (
-              <div
+              <button
                 key={entry.id}
-                className="rounded-xl px-3 py-3 transition hover:bg-white/[0.045]"
+                onClick={() => setSelectedEntry(entry)}
+                className="w-full rounded-xl px-3 py-3 text-left transition hover:bg-white/[0.045]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <p className="min-w-0 text-sm text-zinc-300">
@@ -566,7 +569,7 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
                     timeStyle: 'short',
                   })}
                 </p>
-              </div>
+              </button>
             ))}
             {entries.length === 0 && (
               <p className="py-7 text-center text-sm text-zinc-600">
@@ -583,8 +586,16 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
           calendar={calendar}
           secondsByDay={secondsByDay}
           entries={entries}
+          onSelect={setSelectedEntry}
         />
       </div>
+      {selectedEntry && (
+        <TimeEntryDrawer
+          entry={selectedEntry}
+          projects={projects}
+          onClose={() => setSelectedEntry(null)}
+        />
+      )}
     </section>
   )
 }
@@ -812,12 +823,14 @@ function TimeCalendar({
   calendar,
   secondsByDay,
   entries,
+  onSelect,
 }: {
   month: Date
   setMonth: (value: Date) => void
   calendar: Date[]
   secondsByDay: Record<string, number>
   entries: Entry[]
+  onSelect?: (entry: Entry) => void
 }) {
   return (
     <div className="rounded-2xl bg-white/[0.035] p-5 ring-1 ring-white/[0.07]">
@@ -829,6 +842,12 @@ function TimeCalendar({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMonth(startOfMonth(new Date()))}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            Today
+          </button>
           <button
             onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
             aria-label="Previous month"
@@ -868,18 +887,138 @@ function TimeCalendar({
             >
               <span className="text-xs">{day.getDate()}</span>
               {seconds > 0 && (
-                <div
-                  title={dayEntries.map((entry) => entry.description).join('\n')}
-                  className="mt-2 rounded-md bg-emerald-400/10 px-1.5 py-1 text-[11px] font-medium text-emerald-100"
-                >
+                <div className="mt-2 rounded-md bg-emerald-400/10 px-1.5 py-1 text-[11px] font-medium text-emerald-100">
                   <Clock3 className="mr-1 inline size-3" />
                   {formatDuration(seconds)}
                 </div>
               )}
+              <div className="mt-1 space-y-1">
+                {dayEntries.slice(0, 2).map((entry) => (
+                  <button
+                    key={entry.id}
+                    onClick={() => onSelect?.(entry)}
+                    className="block w-full truncate rounded px-1.5 py-1 text-left text-[10px] text-zinc-400 transition hover:bg-white/[0.08] hover:text-[#eee9df]"
+                    title={entry.description || 'Untitled time entry'}
+                  >
+                    {entry.description || 'Untitled time entry'}
+                  </button>
+                ))}
+                {dayEntries.length > 2 && (
+                  <button
+                    onClick={() => onSelect?.(dayEntries[0])}
+                    className="px-1.5 text-[10px] text-zinc-500 hover:text-[#eee9df]"
+                  >
+                    +{dayEntries.length - 2} more
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function TimeEntryDrawer({
+  entry,
+  projects,
+  onClose,
+}: {
+  entry: Entry
+  projects: { id: string; name: string }[]
+  onClose: () => void
+}) {
+  const projectName =
+    projects.find((project) => project.id === entry.project_id)?.name ?? 'Unknown project'
+  const customFields = Object.entries(entry.custom_fields).filter(
+    ([key]) => !['billing_status', 'approval_status'].includes(key),
+  )
+  return (
+    <div className="fixed inset-0 z-40">
+      <button
+        aria-label="Close time entry details"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <aside className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col bg-[#141418] shadow-2xl ring-1 ring-white/[0.1]">
+        <div className="flex items-start justify-between border-b border-white/[0.07] px-6 py-5">
+          <div className="min-w-0">
+            <p className="text-sm text-zinc-500">{projectName}</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em] text-zinc-100">
+              Time entry details
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close time entry details"
+            className="rounded-lg p-2 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="rounded-xl bg-emerald-400/[0.08] p-4">
+            <p className="text-xs font-medium uppercase tracking-[0.1em] text-emerald-200/70">
+              Tracked
+            </p>
+            <p className="mt-2 font-mono text-3xl font-semibold tracking-[-0.05em] text-emerald-100">
+              {formatDuration(entry.duration_seconds)}
+            </p>
+            <p className="mt-2 text-sm text-emerald-100/80">
+              {new Date(entry.started_at).toLocaleString([], {
+                dateStyle: 'full',
+                timeStyle: 'short',
+              })}{' '}
+              – {new Date(entry.ended_at).toLocaleTimeString([], { timeStyle: 'short' })}
+            </p>
+          </div>
+          <section className="mt-7">
+            <h3 className="text-sm font-medium text-zinc-200">Work note</h3>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-400">
+              {entry.description || 'No work note was recorded.'}
+            </p>
+          </section>
+          <dl className="mt-7 grid gap-4 sm:grid-cols-2">
+            <Detail label="Billing status" value={entry.billing_status} />
+            <Detail label="Approval status" value={entry.approval_status} />
+            <Detail label="Source" value={entry.source} />
+            <Detail label="Timer interval" value={`${entry.duration_seconds} seconds`} />
+          </dl>
+          {entry.page_url && (
+            <section className="mt-7">
+              <h3 className="text-sm font-medium text-zinc-200">Browser context</h3>
+              <a
+                href={entry.page_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 block break-all text-sm text-sky-200 underline decoration-sky-200/30 underline-offset-4 hover:text-sky-100"
+              >
+                {entry.page_title || entry.page_url}
+              </a>
+            </section>
+          )}
+          {customFields.length > 0 && (
+            <section className="mt-7">
+              <h3 className="text-sm font-medium text-zinc-200">Project fields</h3>
+              <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+                {customFields.map(([label, value]) => (
+                  <Detail key={label} label={label.replaceAll('_', ' ')} value={value || '—'} />
+                ))}
+              </dl>
+            </section>
+          )}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs capitalize text-zinc-600">{label}</dt>
+      <dd className="mt-1 break-words text-sm text-zinc-300">{value}</dd>
     </div>
   )
 }
