@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleStop,
+  Download,
   Clock3,
   Play,
   Plus,
@@ -214,6 +215,37 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
     setActive(next)
     setNotice(`Tracking ${currentProject?.name ?? 'this project'}.`)
   }
+  const exportEntries = (format: 'csv' | 'json', range: 'month' | 'all') => {
+    const start = range === 'month' ? startOfMonth(month).getTime() : Number.NEGATIVE_INFINITY
+    const end =
+      range === 'month'
+        ? new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime()
+        : Number.POSITIVE_INFINITY
+    const selected = entries.filter(
+      (entry) =>
+        (!projectId || entry.project_id === projectId) &&
+        new Date(entry.started_at).getTime() >= start &&
+        new Date(entry.started_at).getTime() < end,
+    )
+    const projectName = (currentProject?.name ?? 'forge').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    const period =
+      range === 'month'
+        ? month.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit' })
+        : 'all-time'
+    const content =
+      format === 'csv' ? timeEntriesCsv(selected, fields) : JSON.stringify(selected, null, 2)
+    const blob = new Blob([content], {
+      type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json',
+    })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `forge-${projectName}-time-${period}.${format}`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    setNotice(
+      `${selected.length} ${selected.length === 1 ? 'entry' : 'entries'} exported as ${format.toUpperCase()}.`,
+    )
+  }
   const stop = async () => {
     if (!active || !supabase || !user) return
     const endedAt = new Date().toISOString()
@@ -307,6 +339,31 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
           {error || notice}
         </p>
       )}
+      <div className="mt-6 flex flex-col justify-between gap-3 rounded-xl bg-white/[0.025] px-4 py-3 ring-1 ring-white/[0.06] sm:flex-row sm:items-center">
+        <p className="text-sm text-zinc-500">
+          Export {currentProject?.name ?? 'selected project'} time for other tools.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => exportEntries('csv', 'month')}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-zinc-300 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <Download className="size-4" /> CSV · this month
+          </button>
+          <button
+            onClick={() => exportEntries('csv', 'all')}
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            CSV · all time
+          </button>
+          <button
+            onClick={() => exportEntries('json', 'all')}
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            JSON backup
+          </button>
+        </div>
+      </div>
       <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="rounded-2xl bg-white/[0.04] p-6 ring-1 ring-white/[0.07]">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -727,4 +784,52 @@ function calendarDays(month: Date) {
     day.setDate(start.getDate() + index)
     return day
   })
+}
+
+function timeEntriesCsv(entries: Entry[], fields: TrackerField[]) {
+  const customIds = Array.from(
+    new Set([
+      ...fields.map((field) => field.id),
+      ...entries.flatMap((entry) => Object.keys(entry.custom_fields)),
+    ]),
+  )
+  const headers = [
+    'Date',
+    'From time',
+    'To time',
+    'Timer Intervals',
+    'Hour(s)',
+    'Hours(HH:MM)',
+    'Billing Status',
+    'Approval Status',
+    'Description',
+    'Source',
+    'Page URL',
+    'Page title',
+    ...customIds.map((id) => fields.find((field) => field.id === id)?.label ?? id),
+  ]
+  const row = (values: Array<string | number | null | undefined>) =>
+    values.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')
+  return [
+    row(headers),
+    ...entries.map((entry) => {
+      const started = new Date(entry.started_at)
+      const ended = new Date(entry.ended_at)
+      return row([
+        started.toLocaleDateString('en-CA'),
+        started.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ended.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        entry.duration_seconds,
+        (entry.duration_seconds / 3600).toFixed(2),
+        formatDuration(entry.duration_seconds).slice(0, 5),
+        entry.billing_status,
+        entry.approval_status,
+        entry.description,
+        entry.source,
+        entry.page_url,
+        entry.page_title,
+        ...customIds.map((id) => entry.custom_fields[id]),
+      ])
+    }),
+  ].join('\n')
 }
