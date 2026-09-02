@@ -10,6 +10,7 @@ const elapsed = document.querySelector('#elapsed')
 const stop = document.querySelector('#stop')
 const syncUrl = 'https://lqgdtmrhlfcqeigqxajk.supabase.co/functions/v1/time-tracker-sync'
 let activeTab
+let ticker = null
 
 chrome.storage.sync.get(
   { forgeUrl: 'https://forge.christianfoster.dev', pairingCode: '' },
@@ -42,14 +43,20 @@ const request = async (action) => {
   return result
 }
 const renderTimer = (active) => {
+  if (ticker) window.clearInterval(ticker)
+  ticker = null
   timer.hidden = !active
   if (!active) return
   status.textContent = active.description || 'Shared Forge timer is running'
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000),
-  )
-  elapsed.textContent = formatDuration(seconds)
+  const tick = () => {
+    const seconds = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000),
+    )
+    elapsed.textContent = formatDuration(seconds)
+  }
+  tick()
+  ticker = window.setInterval(tick, 1000)
 }
 async function refreshTimer() {
   connect.disabled = true
