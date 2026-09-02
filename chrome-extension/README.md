@@ -10,4 +10,10 @@ This extension sends the active browser page and an optional note to Forge’s T
 4. Select this `chrome-extension` folder.
 5. Pin **Forge Time Tracker** from Chrome’s extensions menu.
 
-The first time you use it, enter your Forge address (for example `https://forge.christianfoster.dev`). It is saved in Chrome sync storage.
+## Pair the shared timer
+
+1. In Forge, open **Time tracker** and expand **Connect the Chrome extension to this shared timer**.
+2. Generate a pairing code and copy it.
+3. Open the extension, paste the code, then choose **Connect / refresh timer**.
+
+The extension now shows and can stop the same active timer as Forge. Its pairing code is stored in Chrome sync storage; Forge stores only a secure one-way hash of the code.

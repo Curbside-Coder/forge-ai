@@ -9,3 +9,6 @@ verify_jwt = true
 
 [functions.forge-rhythm]
 verify_jwt = false
+
+[functions.time-tracker-sync]
+verify_jwt = false

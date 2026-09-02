@@ -4,6 +4,8 @@ import {
   ChevronRight,
   CircleStop,
   Download,
+  Copy,
+  KeyRound,
   Clock3,
   Play,
   Plus,
@@ -48,8 +50,14 @@ type ActiveTimer = {
   pageUrl?: string
   pageTitle?: string
 }
-
-const activeKey = 'forge.time-tracker.active'
+type DbActiveTimer = {
+  project_id: string
+  started_at: string
+  description: string
+  custom_fields: Record<string, string>
+  page_url: string | null
+  page_title: string | null
+}
 const admiredFields: TrackerField[] = [
   { id: 'client_name', label: 'Client name', type: 'text', defaultValue: 'Admired' },
   { id: 'project_name', label: 'Project name', type: 'text' },
@@ -102,13 +110,14 @@ const formatDuration = (seconds: number) => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 const dateKey = (value: string) => new Date(value).toLocaleDateString('en-CA')
-const fromStorage = (): ActiveTimer | null => {
-  try {
-    return JSON.parse(localStorage.getItem(activeKey) ?? 'null') as ActiveTimer | null
-  } catch {
-    return null
-  }
-}
+const mapActive = (row: DbActiveTimer): ActiveTimer => ({
+  projectId: row.project_id,
+  startedAt: row.started_at,
+  description: row.description,
+  values: row.custom_fields ?? {},
+  pageUrl: row.page_url ?? undefined,
+  pageTitle: row.page_title ?? undefined,
+})
 const defaultsFor = (fields: TrackerField[]) =>
   Object.fromEntries(fields.map((field) => [field.id, field.defaultValue ?? ''])) as Record<
     string,
@@ -124,7 +133,7 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   const [entries, setEntries] = useState<Entry[]>([])
   const [settings, setSettings] = useState<Record<string, TrackerField[]>>({})
   const [projectId, setProjectId] = useState('')
-  const [active, setActive] = useState<ActiveTimer | null>(fromStorage)
+  const [active, setActive] = useState<ActiveTimer | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [description, setDescription] = useState(
     () => new URLSearchParams(window.location.search).get('note') ?? '',
@@ -133,6 +142,7 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
   const currentProject = projects.find((project) => project.id === projectId)
   const fields = useMemo(
     () =>
@@ -152,16 +162,18 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
 
   const load = useCallback(async () => {
     if (!supabase || !user) return
-    const [entryResult, settingsResult] = await Promise.all([
+    const [entryResult, settingsResult, activeResult] = await Promise.all([
       supabase.from('time_entries').select('*').order('started_at', { ascending: false }),
       supabase.from('time_tracking_project_settings').select('project_id,fields'),
+      supabase.from('active_time_trackers').select('*').maybeSingle(),
     ])
-    const issue = entryResult.error ?? settingsResult.error
+    const issue = entryResult.error ?? settingsResult.error ?? activeResult.error
     if (issue) {
       setError(issue.message)
       return
     }
     setEntries((entryResult.data ?? []) as Entry[])
+    setActive(activeResult.data ? mapActive(activeResult.data as DbActiveTimer) : null)
     setSettings(
       Object.fromEntries(
         (settingsResult.data ?? []).map((row) => [row.project_id, asFields(row.fields)]),
@@ -171,6 +183,28 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
   useEffect(() => {
     void load()
   }, [load])
+  useEffect(() => {
+    const client = supabase
+    if (!client || !user) return
+    const channel = client
+      .channel(`forge-active-timer-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'active_time_trackers',
+          filter: `owner_id=eq.${user.id}`,
+        },
+        () => void load(),
+      )
+      .subscribe()
+    const refresh = window.setInterval(() => void load(), 15_000)
+    return () => {
+      window.clearInterval(refresh)
+      void client.removeChannel(channel)
+    }
+  }, [load, user])
   useEffect(() => {
     if (!projectId && projects[0])
       setProjectId(
@@ -200,8 +234,8 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
     setValues(defaultsFor(fields))
   }, [active, projectId, fields])
 
-  const start = () => {
-    if (!projectId) return
+  const start = async () => {
+    if (!projectId || !supabase || !user) return
     const incoming = new URLSearchParams(window.location.search)
     const next: ActiveTimer = {
       projectId,
@@ -211,8 +245,27 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
       pageUrl: incoming.get('pageUrl') ?? undefined,
       pageTitle: incoming.get('pageTitle') ?? undefined,
     }
-    localStorage.setItem(activeKey, JSON.stringify(next))
-    setActive(next)
+    const { data, error: issue } = await supabase
+      .from('active_time_trackers')
+      .upsert(
+        {
+          owner_id: user.id,
+          project_id: next.projectId,
+          started_at: next.startedAt,
+          description: next.description,
+          custom_fields: next.values,
+          page_url: next.pageUrl ?? null,
+          page_title: next.pageTitle ?? null,
+        },
+        { onConflict: 'owner_id' },
+      )
+      .select()
+      .single()
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setActive(mapActive(data as DbActiveTimer))
     setNotice(`Tracking ${currentProject?.name ?? 'this project'}.`)
   }
   const exportEntries = (format: 'csv' | 'json', range: 'month' | 'all') => {
@@ -271,11 +324,38 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
       setError(issue.message)
       return
     }
-    localStorage.removeItem(activeKey)
+    const { error: removeIssue } = await supabase
+      .from('active_time_trackers')
+      .delete()
+      .eq('owner_id', user.id)
+    if (removeIssue) {
+      setError(removeIssue.message)
+      return
+    }
     setActive(null)
     setDescription('')
     setNotice('Time entry saved to Forge.')
     await load()
+  }
+  const createPairingCode = async () => {
+    if (!supabase || !user) return
+    const raw = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
+    const bytes = new TextEncoder().encode(raw)
+    const digest = await crypto.subtle.digest('SHA-256', bytes)
+    const tokenHash = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+    const { error: issue } = await supabase
+      .from('time_tracker_extension_tokens')
+      .insert({ owner_id: user.id, token_hash: tokenHash })
+    if (issue) {
+      setError(issue.message)
+      return
+    }
+    setPairingCode(raw)
+    setNotice(
+      'Chrome pairing code created. Copy it into the extension once; it is never shown again.',
+    )
   }
   const saveFields = async () => {
     if (!supabase || !user || !projectId) return
@@ -364,6 +444,35 @@ export function TimeTrackerPage({ settingsOnly = false }: { settingsOnly?: boole
           </button>
         </div>
       </div>
+      <details className="mt-4 rounded-xl bg-white/[0.025] px-4 py-3 ring-1 ring-white/[0.06]">
+        <summary className="cursor-pointer text-sm text-zinc-400 hover:text-[#eee9df]">
+          Connect the Chrome extension to this shared timer
+        </summary>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-6 text-zinc-500">
+            Pair once to show and stop this same timer from Chrome. Forge keeps only one active
+            timer for your account, so every signed-in Forge session stays in sync.
+          </p>
+          <button
+            onClick={() => void createPairingCode()}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-white/[0.06] px-3 py-2 text-sm text-zinc-300 hover:bg-[#29282b] hover:text-[#eee9df]"
+          >
+            <KeyRound className="size-4" /> Generate pairing code
+          </button>
+        </div>
+        {pairingCode && (
+          <div className="mt-4 flex flex-col gap-2 rounded-lg bg-black/25 p-3 sm:flex-row sm:items-center">
+            <code className="min-w-0 flex-1 break-all text-xs text-emerald-100">{pairingCode}</code>
+            <button
+              onClick={() => void navigator.clipboard.writeText(pairingCode)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            >
+              <Copy className="size-4" />
+              Copy
+            </button>
+          </div>
+        )}
+      </details>
       <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="rounded-2xl bg-white/[0.04] p-6 ring-1 ring-white/[0.07]">
           <div className="flex flex-wrap items-center justify-between gap-4">

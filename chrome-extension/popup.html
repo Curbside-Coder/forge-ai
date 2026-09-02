@@ -17,12 +17,25 @@
           placeholder="https://forge.christianfoster.dev"
       /></label>
       <label
+        >Pairing code<input
+          id="pairingCode"
+          type="password"
+          placeholder="Generate this in Forge Time Tracker"
+        />
+      </label>
+      <button id="connect">Connect / refresh timer</button>
+      <section id="timer" class="timer" hidden>
+        <p id="status">No timer is active.</p>
+        <strong id="elapsed">00:00:00</strong>
+        <button id="stop" class="stop">Stop shared timer</button>
+      </section>
+      <label
         >Work note<textarea id="note" placeholder="What are you doing on this page?"></textarea>
       </label>
-      <button id="open">Track this in Forge</button>
+      <button id="open">Open Forge Time Tracker</button>
       <p class="hint">
-        Forge opens with this page’s context ready. Start and stop the timer there so your private
-        data stays in Forge.
+        Forge keeps one secure, shared timer for your account. Pair once to see and stop it from
+        Chrome.
       </p>
     </main>
     <script src="popup.js"></script>

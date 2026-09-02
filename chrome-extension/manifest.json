@@ -4,5 +4,6 @@
   "description": "Start a Forge time entry from the browser page you are working on.",
   "version": "1.0.0",
   "action": { "default_popup": "popup.html", "default_title": "Forge Time Tracker" },
-  "permissions": ["storage", "tabs", "activeTab"]
+  "permissions": ["storage", "tabs", "activeTab"],
+  "host_permissions": ["https://lqgdtmrhlfcqeigqxajk.supabase.co/*"]
 }
