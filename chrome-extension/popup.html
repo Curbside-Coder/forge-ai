@@ -8,45 +8,74 @@
   </head>
   <body>
     <main>
-      <div class="brand"><span>F</span><strong>Forge</strong></div>
-      <p id="page" class="page">Reading current browser page…</p>
-      <label
-        >Forge address<input
-          id="forgeUrl"
-          type="url"
-          placeholder="https://forge.christianfoster.dev"
-      /></label>
-      <label
-        >Pairing code<input
-          id="pairingCode"
-          type="password"
-          placeholder="Generate this in Forge Time Tracker"
-        />
-      </label>
-      <button id="connect">Connect / refresh timer</button>
+      <header class="header">
+        <div class="brand"><span>F</span><strong>Forge</strong></div>
+        <button
+          id="settingsToggle"
+          class="icon-button"
+          type="button"
+          aria-label="Open extension settings"
+          aria-expanded="false"
+          title="Extension settings"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z" />
+            <path d="m19.4 13.5 1.2.9-1.8 3.1-1.4-.6a7.7 7.7 0 0 1-1.8 1l-.2 1.5h-3.6l-.2-1.5a7.7 7.7 0 0 1-1.8-1l-1.4.6-1.8-3.1 1.2-.9a7.2 7.2 0 0 1 0-2l-1.2-.9 1.8-3.1 1.4.6a7.7 7.7 0 0 1 1.8-1l.2-1.5h3.6l.2 1.5a7.7 7.7 0 0 1 1.8 1l1.4-.6 1.8 3.1-1.2.9a7.2 7.2 0 0 1 0 2Z" />
+          </svg>
+        </button>
+      </header>
+
       <section id="timer" class="timer" hidden>
-        <p id="project">Project</p>
-        <p id="status">Work note</p>
+        <p id="project" class="project">Project</p>
         <strong id="elapsed">00:00:00</strong>
-        <p id="startedAt">Started at</p>
-        <button id="stop" class="stop">Stop shared timer</button>
+        <p id="startedAt" class="started-at">Started at</p>
+        <label class="work-note"
+          >What are you working on?<textarea
+            id="activeNote"
+            placeholder="Add a work note"
+          ></textarea>
+        </label>
+        <button id="stop" class="stop">Stop timer</button>
       </section>
-      <div id="startControls">
+
+      <section id="startControls" class="start-controls">
+        <p class="empty-title">Ready when you are</p>
         <label
           >Project<select id="projectId">
             <option value="">Choose a project</option>
           </select></label
         >
         <label
-          >Work note<textarea id="note" placeholder="What are you doing on this page?"></textarea>
+          >What are you working on?<textarea
+            id="note"
+            placeholder="A short work note"
+          ></textarea>
         </label>
-        <button id="start">Start shared timer</button>
-      </div>
-      <button id="open">Open Forge Time Tracker</button>
-      <p class="hint">
-        Forge keeps one secure, shared timer for your account. Pair once to see and stop it from
-        Chrome.
-      </p>
+        <button id="start">Start timer</button>
+      </section>
+
+      <section id="setupPanel" class="setup-panel" hidden>
+        <p class="setup-title">Extension connection</p>
+        <label
+          >Forge address<input
+            id="forgeUrl"
+            type="url"
+            placeholder="https://forge.christianfoster.dev"
+        /></label>
+        <label
+          >Pairing code<input
+            id="pairingCode"
+            type="password"
+            placeholder="Generate this in Forge Time Tracker"
+          />
+        </label>
+        <button id="connect" class="secondary">Sync with Forge</button>
+      </section>
+
+      <footer>
+        <button id="open" class="open-link" type="button">Open Forge</button>
+        <p id="syncStatus" class="sync-status" aria-live="polite"></p>
+      </footer>
     </main>
     <script src="popup.js"></script>
   </body>

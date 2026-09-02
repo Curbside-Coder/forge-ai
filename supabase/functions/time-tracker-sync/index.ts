@@ -21,7 +21,7 @@ Deno.serve(async (request) => {
   try {
     const body = (await request.json()) as {
       token?: string
-      action?: 'get' | 'start' | 'stop'
+      action?: 'get' | 'start' | 'update' | 'stop'
       projectId?: string
       description?: string
       values?: Record<string, string>
@@ -83,6 +83,16 @@ Deno.serve(async (request) => {
       const { data, error } = await admin
         .from('active_time_trackers')
         .upsert(tracker, { onConflict: 'owner_id' })
+        .select('*, projects(name)')
+        .single()
+      return error ? response({ error: error.message }, 500) : response({ active: data })
+    }
+    if (body.action === 'update') {
+      if (!active) return response({ error: 'There is no active shared timer to update.' }, 404)
+      const { data, error } = await admin
+        .from('active_time_trackers')
+        .update({ description: body.description?.slice(0, 1000) ?? active.description })
+        .eq('owner_id', credential.owner_id)
         .select('*, projects(name)')
         .single()
       return error ? response({ error: error.message }, 500) : response({ active: data })

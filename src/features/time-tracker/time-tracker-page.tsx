@@ -10,14 +10,16 @@ import {
   CalendarDays,
   ExternalLink,
   Play,
+  PenLine,
   Plus,
+  RefreshCw,
   Save,
   Settings2,
   TimerReset,
   Trash2,
   X,
 } from 'lucide-react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
@@ -1237,67 +1239,31 @@ function TimesheetWorkspace({
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
-            <thead className="bg-black/20 text-xs uppercase tracking-[0.08em] text-zinc-500">
-              <tr>
-                <th className="w-28 px-4 py-3 font-medium">Date</th>
-                <th className="w-32 px-3 py-3 font-medium">Time in</th>
-                <th className="w-32 px-3 py-3 font-medium">Time out</th>
-                <th className="w-28 px-3 py-3 text-right font-medium">Hours worked</th>
-                <th className="min-w-60 px-3 py-3 font-medium">Notes</th>
-                <th className="w-28 px-3 py-3 text-right font-medium">USD / hour</th>
-                <th className="w-28 px-3 py-3 text-right font-medium">USD total</th>
-                <th className="w-20 px-3 py-3 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((day) => {
-                const row = resolvedDay(day)
-                const payrollPeriod = periodFor(day)
-                return (
-                  <Fragment key={dateKey(day)}>
-                    {(day.getDate() === 1 || day.getDate() === 16) && (
-                      <PayrollDivider secondHalf={day.getDate() === 16} />
-                    )}
-                    <TimesheetRow
-                      day={day}
-                      trackerEntries={row.trackerEntries}
-                      override={row.override}
-                      initialTimeIn={row.timeIn}
-                      initialTimeOut={row.timeOut}
-                      initialNotes={row.notes}
-                      rate={payrollPeriod?.hourly_rate ?? 7}
-                      onSaveOverride={onSaveOverride}
-                      onUseTrackerTime={onUseTrackerTime}
-                      onSelect={onSelect}
-                    />
-                  </Fragment>
-                )
-              })}
-            </tbody>
-            <tfoot className="border-t border-white/[0.1] bg-black/15 text-sm">
-              <TimesheetTotal
-                label="1–15"
-                hours={firstHours}
-                rate={periodFor(days[0])?.hourly_rate ?? 7}
-              />
-              <TimesheetTotal
-                label="16–end"
-                hours={secondHours}
-                rate={periodFor(days[days.length - 1])?.hourly_rate ?? 7}
-              />
-              <TimesheetTotal
-                label="Monthly total"
-                hours={firstHours + secondHours}
-                amount={
-                  firstHours * (periodFor(days[0])?.hourly_rate ?? 7) +
-                  secondHours * (periodFor(days[days.length - 1])?.hourly_rate ?? 7)
-                }
-                strong
-              />
-            </tfoot>
-          </table>
+        <div className="grid gap-6 p-4 2xl:grid-cols-2">
+          <TimesheetHalf
+            title="First half · 1–15"
+            tone="text-cyan-100"
+            days={days.filter((day) => day.getDate() <= 15)}
+            hours={firstHours}
+            rate={periodFor(days[0])?.hourly_rate ?? 7}
+            resolveDay={resolvedDay}
+            periodFor={periodFor}
+            onSaveOverride={onSaveOverride}
+            onUseTrackerTime={onUseTrackerTime}
+            onSelect={onSelect}
+          />
+          <TimesheetHalf
+            title="Second half · 16–end"
+            tone="text-violet-100"
+            days={days.filter((day) => day.getDate() > 15)}
+            hours={secondHours}
+            rate={periodFor(days[days.length - 1])?.hourly_rate ?? 7}
+            resolveDay={resolvedDay}
+            periodFor={periodFor}
+            onSaveOverride={onSaveOverride}
+            onUseTrackerTime={onUseTrackerTime}
+            onSelect={onSelect}
+          />
         </div>
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
@@ -1317,6 +1283,91 @@ function TimesheetWorkspace({
         />
       </div>
     </section>
+  )
+}
+
+type ResolvedTimesheetDay = {
+  trackerEntries: Entry[]
+  override?: TimesheetOverride
+  timeIn: string
+  timeOut: string
+  hours: number
+  notes: string
+}
+
+function TimesheetHalf({
+  title,
+  tone,
+  days,
+  hours,
+  rate,
+  resolveDay,
+  periodFor,
+  onSaveOverride,
+  onUseTrackerTime,
+  onSelect,
+}: {
+  title: string
+  tone: string
+  days: Date[]
+  hours: number
+  rate: number
+  resolveDay: (day: Date) => ResolvedTimesheetDay
+  periodFor: (day: Date) => TimesheetPeriod | undefined
+  onSaveOverride: (row: {
+    day: Date
+    timeIn: string
+    timeOut: string
+    notes: string
+  }) => Promise<void>
+  onUseTrackerTime: (day: Date) => Promise<void>
+  onSelect: (entry: Entry) => void
+}) {
+  return (
+    <div className="min-w-0 overflow-x-auto rounded-xl bg-black/10 ring-1 ring-white/[0.07] 2xl:overflow-visible">
+      <div
+        className={`border-b border-white/[0.08] px-3 py-2 text-xs font-medium tracking-[0.07em] ${tone}`}
+      >
+        {title}
+      </div>
+      <table className="w-full min-w-[39rem] border-collapse text-left text-xs 2xl:min-w-0">
+        <thead className="bg-black/20 text-[10px] uppercase tracking-[0.07em] text-zinc-500">
+          <tr>
+            <th className="w-16 px-2 py-2 font-medium">Date</th>
+            <th className="w-20 px-2 py-2 font-medium">In</th>
+            <th className="w-20 px-2 py-2 font-medium">Out</th>
+            <th className="w-16 px-2 py-2 text-right font-medium">Hours</th>
+            <th className="min-w-44 px-2 py-2 font-medium">Notes</th>
+            <th className="w-16 px-2 py-2 text-right font-medium">Rate</th>
+            <th className="w-16 px-2 py-2 text-right font-medium">Total</th>
+            <th className="w-12 px-2 py-2 font-medium" />
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((day) => {
+            const row = resolveDay(day)
+            return (
+              <TimesheetRow
+                key={dateKey(day)}
+                day={day}
+                trackerEntries={row.trackerEntries}
+                override={row.override}
+                initialTimeIn={row.timeIn}
+                initialTimeOut={row.timeOut}
+                initialNotes={row.notes}
+                rate={periodFor(day)?.hourly_rate ?? rate}
+                onSaveOverride={onSaveOverride}
+                onUseTrackerTime={onUseTrackerTime}
+                onSelect={onSelect}
+              />
+            )
+          })}
+        </tbody>
+        <tfoot className="border-t border-white/[0.1] bg-black/15 text-xs">
+          <TimesheetTotal label={title} hours={hours} rate={rate} />
+        </tfoot>
+      </table>
+    </div>
   )
 }
 
@@ -1377,7 +1428,7 @@ function TimesheetRow({
   }
   return (
     <tr className={`border-t border-white/[0.055] ${weekend ? weekendTone : periodTone}`}>
-      <td className="px-4 py-2.5 align-top">
+      <td className="px-2 py-1 align-top">
         <span className={`font-medium ${weekend && hasWork ? 'text-amber-100' : 'text-zinc-300'}`}>
           {day.getDate()}
         </span>
@@ -1385,62 +1436,66 @@ function TimesheetRow({
           {day.toLocaleDateString([], { weekday: 'short' })}
         </span>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-2 py-1">
         <input
           aria-label={`Time in ${dateKey(day)}`}
           type="time"
           value={timeIn}
           onChange={(event) => setTimeIn(event.target.value)}
           onBlur={() => void save()}
-          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+          className="w-full rounded-md bg-black/20 px-1.5 py-1 text-xs text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
         />
       </td>
-      <td className="px-3 py-2">
+      <td className="px-2 py-1">
         <input
           aria-label={`Time out ${dateKey(day)}`}
           type="time"
           value={timeOut}
           onChange={(event) => setTimeOut(event.target.value)}
           onBlur={() => void save()}
-          className="w-full rounded-lg bg-black/20 px-2.5 py-2 text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+          className="w-full rounded-md bg-black/20 px-1.5 py-1 text-xs text-zinc-200 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
         />
       </td>
-      <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-300">
+      <td className="px-2 py-1 text-right font-mono tabular-nums text-zinc-300">
         {hours.toFixed(2)}
       </td>
-      <td className="px-3 py-2 align-top">
+      <td className="px-2 py-1 align-top">
         <textarea
           aria-label={`Notes ${dateKey(day)}`}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           onBlur={() => void save()}
           placeholder="What did you work on?"
-          rows={2}
-          className="min-h-[3.5rem] w-full resize-y rounded-lg bg-black/20 px-2.5 py-2 text-sm leading-5 text-zinc-200 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.07] focus:ring-emerald-200/40"
+          rows={1}
+          className="h-7 w-full resize-y rounded-md bg-black/20 px-1.5 py-1 text-xs leading-4 text-zinc-200 placeholder:text-zinc-700 outline-none ring-1 ring-white/[0.07] transition-[height] focus:h-20 focus:ring-emerald-200/40"
         />
       </td>
-      <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-400">
+      <td className="px-2 py-1 text-right font-mono tabular-nums text-zinc-400">
         {rate ? money(rate) : 'Set rate'}
       </td>
-      <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-100">
+      <td className="px-2 py-1 text-right font-mono tabular-nums text-emerald-100">
         {rate ? money(hours * rate) : '—'}
       </td>
-      <td className="px-3 py-2 text-right">
+      <td className="px-2 py-1 text-right whitespace-nowrap">
         {override ? (
           <button
             type="button"
             onClick={() => void onUseTrackerTime(day)}
-            className="rounded-lg px-2 py-1 text-xs text-amber-100 hover:bg-amber-400/10"
+            aria-label={`Use tracked time for ${dateKey(day)}`}
+            title="Return to tracked time"
+            className="rounded-md p-1 text-amber-100 hover:bg-amber-400/10"
           >
-            Use tracker
+            <RefreshCw className="size-3" />
           </button>
         ) : (
           <button
             type="button"
             onClick={() => void save()}
-            className="rounded-lg px-2 py-1 text-xs text-zinc-400 hover:bg-[#29282b] hover:text-[#eee9df]"
+            aria-label={`Use manual override for ${dateKey(day)}`}
+            title="Use the edited values as a manual override"
+            className="rounded-md p-1 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
-            Override
+            <PenLine className="size-3" />
           </button>
         )}
         {trackerEntries[0] && (
@@ -1448,7 +1503,7 @@ function TimesheetRow({
             type="button"
             onClick={() => onSelect(trackerEntries[0])}
             aria-label={`View ${dateKey(day)} time entry`}
-            className="rounded-lg p-2 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
+            className="rounded-md p-1 text-zinc-500 hover:bg-[#29282b] hover:text-[#eee9df]"
           >
             <ExternalLink className="size-4" />
           </button>
@@ -1457,27 +1512,6 @@ function TimesheetRow({
           <span className="ml-1 text-xs text-zinc-600">{trackerEntries.length} parcels</span>
         )}
         {saving && <span className="ml-2 text-[10px] text-emerald-200">Saving</span>}
-      </td>
-    </tr>
-  )
-}
-
-function PayrollDivider({ secondHalf }: { secondHalf: boolean }) {
-  return (
-    <tr
-      className={
-        secondHalf
-          ? 'bg-[linear-gradient(90deg,rgba(109,40,217,0.32),rgba(109,40,217,0.08),transparent)]'
-          : 'bg-[linear-gradient(90deg,rgba(14,116,144,0.28),rgba(14,116,144,0.08),transparent)]'
-      }
-    >
-      <td
-        colSpan={8}
-        className="border-y border-white/[0.1] px-4 py-2 text-xs font-medium tracking-[0.08em] text-zinc-100"
-      >
-        {secondHalf
-          ? 'SECOND HALF · 16–END · PAYMENT PERIOD'
-          : 'FIRST HALF · 1–15 · PAYMENT PERIOD'}
       </td>
     </tr>
   )

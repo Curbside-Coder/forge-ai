@@ -2,21 +2,33 @@
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   background: #101013;
-  color: #eee9df;
+  color: #e8e3d9;
 }
+
 body {
-  width: 320px;
+  width: 340px;
   margin: 0;
 }
+
 main {
-  padding: 18px;
+  padding: 16px;
 }
+
+.header,
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: 16px;
 }
+
 .brand span {
   display: grid;
   width: 28px;
@@ -27,18 +39,44 @@ main {
   color: #1b1916;
   font-weight: 800;
 }
-.page {
-  min-height: 34px;
-  color: #a1a1aa;
-  font-size: 12px;
-  line-height: 1.45;
+
+.icon-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 7px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: transparent;
+  color: #aaa7a0;
 }
+
+.icon-button:hover,
+.icon-button[aria-expanded='true'] {
+  border-color: rgba(215, 210, 199, 0.45);
+  background: rgba(215, 210, 199, 0.1);
+  color: #f4f0e8;
+}
+
+.icon-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
 label {
   display: block;
   margin-top: 12px;
-  color: #a1a1aa;
+  color: #aaa7a0;
   font-size: 12px;
 }
+
 input,
 textarea,
 select {
@@ -46,23 +84,27 @@ select {
   width: 100%;
   margin-top: 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 9px;
+  border-radius: 9px;
+  padding: 9px 10px;
   background: #18181c;
-  color: #eee9df;
+  color: #e8e3d9;
   font: inherit;
   font-size: 12px;
   outline: none;
 }
+
 textarea {
-  min-height: 64px;
+  min-height: 54px;
   resize: vertical;
 }
+
 input:focus,
 textarea:focus,
 select:focus {
   border-color: rgba(196, 181, 253, 0.65);
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.08);
 }
+
 button {
   width: 100%;
   margin-top: 14px;
@@ -74,47 +116,116 @@ button {
   font: 600 13px inherit;
   cursor: pointer;
 }
+
 button:hover {
   background: #eee9df;
 }
+
+.timer,
+.start-controls {
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 14px;
+  background: #17171b;
+}
+
 .timer {
-  margin-top: 14px;
-  border-radius: 10px;
-  padding: 12px;
-  background: rgba(74, 222, 128, 0.08);
-  color: #d1fae5;
+  border-color: rgba(74, 222, 128, 0.18);
+  background: linear-gradient(145deg, rgba(74, 222, 128, 0.09), rgba(23, 23, 27, 0.98) 42%);
 }
-.timer p {
+
+.project,
+.empty-title {
   margin: 0;
-  color: #a7f3d0;
-  font-size: 12px;
-}
-.timer #project {
-  color: #ecfdf5;
+  color: #f5f1e9;
+  font-size: 14px;
   font-weight: 700;
 }
-.timer #startedAt {
-  margin-top: 5px;
-  color: #86efac;
-}
+
 .timer strong {
   display: block;
-  margin-top: 6px;
-  font-size: 24px;
-  letter-spacing: -0.04em;
+  margin-top: 8px;
+  color: #ecfdf5;
+  font-size: 32px;
+  letter-spacing: -0.055em;
   font-variant-numeric: tabular-nums;
 }
+
+.started-at {
+  margin: 3px 0 0;
+  color: #98b9a3;
+  font-size: 11px;
+}
+
+.work-note {
+  margin-top: 14px;
+}
+
 .timer .stop {
-  margin-top: 10px;
-  background: rgba(251, 113, 133, 0.15);
+  margin-top: 12px;
+  background: rgba(251, 113, 133, 0.14);
   color: #fecdd3;
 }
+
 .timer .stop:hover {
   background: rgba(251, 113, 133, 0.25);
+  color: #fff1f2;
 }
-.hint {
-  margin: 12px 0 0;
-  color: #71717a;
+
+.setup-panel {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 2px;
+}
+
+.setup-title {
+  margin: 12px 0 -2px;
+  color: #d2cec6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.secondary {
+  background: #29292e;
+  color: #e8e3d9;
+}
+
+.secondary:hover {
+  background: #37373e;
+  color: #fffdf8;
+}
+
+footer {
+  min-height: 25px;
+  margin-top: 12px;
+}
+
+.open-link {
+  width: auto;
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: #aaa7a0;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.open-link:hover {
+  background: transparent;
+  color: #f4f0e8;
+}
+
+.sync-status {
+  max-width: 205px;
+  margin: 0;
+  color: #817f79;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.35;
+  text-align: right;
+}
+
+[hidden] {
+  display: none !important;
 }

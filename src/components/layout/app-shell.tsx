@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import {
   Bell,
   ChartNoAxesCombined,
@@ -33,6 +33,7 @@ const navigation = [
 ] as const
 
 export function AppShell({ children }: PropsWithChildren) {
+  const location = useLocation()
   const { user, signOut } = useAuth()
   const { projects, workItems, meetings } = useWorkspace()
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -217,7 +218,15 @@ export function AppShell({ children }: PropsWithChildren) {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-5 py-10 lg:px-10 lg:py-14">{children}</main>
+        <main
+          className={
+            location.pathname === '/timesheets'
+              ? 'w-full px-5 py-8 lg:px-8 lg:py-10'
+              : 'mx-auto max-w-6xl px-5 py-10 lg:px-10 lg:py-14'
+          }
+        >
+          {children}
+        </main>
       </div>
       {isNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
