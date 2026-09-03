@@ -1,6 +1,7 @@
-import { Bot, Check, Mic, Send, Volume2, VolumeX, X } from 'lucide-react'
+import { Bot, Check, ImagePlus, Mic, Send, Volume2, VolumeX, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ForgeMark } from '@/components/brand/forge-mark'
+import { RichText } from '@/components/shared/rich-text'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useAutopilot } from '@/features/autopilot/autopilot-store'
 import { useWorkspace } from '@/features/workspace/workspace-store'
@@ -334,6 +335,75 @@ export function ForgeChat() {
     ])
     if (voiceEnabled) speak(data.message)
   }
+  const generateImage = async () => {
+    const request = message.trim()
+    if (!request || !supabase) return
+    let activeSessionId = sessionId
+    if (!activeSessionId) {
+      const created = await createSession()
+      if (!created) return
+      activeSessionId = created.id
+    }
+    setMessage('')
+    window.setTimeout(() => composerRef.current?.focus(), 0)
+    setLoading(true)
+    setError(null)
+    setActions([])
+    const optimistic: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      body: request,
+      actions: [],
+      usage: null,
+      createdAt: new Date().toISOString(),
+    }
+    setMessages((current) => [...current, optimistic])
+    const saved = await remember(
+      { role: 'user', body: request, actions: [], usage: null },
+      activeSessionId,
+    )
+    if (saved)
+      setMessages((current) => current.map((entry) => (entry.id === optimistic.id ? saved : entry)))
+    const selectedSession = sessions.find((session) => session.id === activeSessionId)
+    if (selectedSession?.title === 'New chat') {
+      const title = `Image: ${request.slice(0, 41)}`
+      void supabase.from('forge_chat_sessions').update({ title }).eq('id', activeSessionId)
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === activeSessionId ? { ...session, title } : session,
+        ),
+      )
+    }
+    void supabase
+      .from('forge_chat_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', activeSessionId)
+    const { data, error: requestError } = await supabase.functions.invoke('forge-image', {
+      body: { prompt: request },
+    })
+    setLoading(false)
+    if (requestError || data?.error || !data?.imageUrl) {
+      setError(data?.error ?? 'Forge could not generate that image.')
+      return
+    }
+    const usage = data.usage as Usage | null
+    const body = `Created from your prompt.\n\n![Generated image](${data.imageUrl})`
+    const assistant = await remember(
+      { role: 'assistant', body, actions: [], usage },
+      activeSessionId,
+    )
+    setMessages((current) => [
+      ...current,
+      assistant ?? {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        body,
+        actions: [],
+        usage,
+        createdAt: new Date().toISOString(),
+      },
+    ])
+  }
   const speak = async (text: string) => {
     audioRef.current?.pause()
     window.speechSynthesis.cancel()
@@ -663,10 +733,12 @@ export function ForgeChat() {
                     : 'mr-5 rounded-xl bg-white/[0.05] p-3 text-zinc-200'
                 }
               >
-                <p className="leading-6">{entry.body}</p>
+                <RichText content={entry.body} className="leading-6" />
                 {entry.role === 'assistant' && (
                   <button
-                    onClick={() => void speak(entry.body)}
+                    onClick={() =>
+                      void speak(entry.body.replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim())
+                    }
                     title={isSpeaking ? 'Forge is speaking' : 'Hear this answer again'}
                     aria-label={isSpeaking ? 'Forge is speaking' : 'Hear this answer again'}
                     className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-zinc-500 transition hover:bg-[#29282b] hover:text-[#eee9df]"
@@ -724,6 +796,15 @@ export function ForgeChat() {
               placeholder="Ask Forge to do something…"
               className="min-w-0 flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm outline-none ring-1 ring-white/[0.08] placeholder:text-zinc-600"
             />
+            <button
+              onClick={() => void generateImage()}
+              disabled={loading || !message.trim()}
+              aria-label="Generate an image with Forge"
+              title="Create an image from this prompt using OpenAI image credits"
+              className="rounded-lg bg-white/[.08] px-3 text-violet-200 hover:bg-violet-400/[.13] hover:text-violet-100 disabled:opacity-50"
+            >
+              <ImagePlus className="size-4" />
+            </button>
             <button
               onClick={listen}
               disabled={loading}

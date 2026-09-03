@@ -7,6 +7,9 @@ verify_jwt = true
 [functions.forge-command]
 verify_jwt = true
 
+[functions.forge-image]
+verify_jwt = true
+
 [functions.forge-rhythm]
 verify_jwt = false
 

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, Columns3, Filter, Link2, List, Plus, Search, Share2, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type ClipboardEvent } from 'react'
+import { Check, Columns3, Filter, ImagePlus, Link2, List, Plus, Search, Share2, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import { supabase } from '@/lib/supabase'
+import { getPastedImages, imageMarkdown, uploadForgeImage } from '@/lib/image-attachments'
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '@/types/workspace'
 import { WorkItemDetail } from './work-item-detail'
 import { formatDateTime, idleState, ticketLabels } from './work-item-utils'
@@ -139,6 +140,8 @@ export function WorkItemsPage() {
   )
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [isUploadingDescriptionImage, setIsUploadingDescriptionImage] = useState(false)
+  const [descriptionImageStatus, setDescriptionImageStatus] = useState<string | null>(null)
   const [projectId, setProjectId] = useState('')
   const [newProjectName, setNewProjectName] = useState('')
   const [priority, setPriority] = useState<WorkItemPriority>('medium')
@@ -193,7 +196,7 @@ export function WorkItemsPage() {
   }
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!title.trim() || !projectId) return
+    if (!title.trim() || !projectId || isUploadingDescriptionImage) return
     addWorkItem({
       title: title.trim(),
       description: description.trim(),
@@ -203,6 +206,7 @@ export function WorkItemsPage() {
     })
     setTitle('')
     setDescription('')
+    setDescriptionImageStatus(null)
     setPriority('medium')
     setType('task')
     setIsCreating(false)
@@ -210,6 +214,32 @@ export function WorkItemsPage() {
   const openForm = () => {
     setProjectId(projects[0]?.id ?? '')
     setIsCreating(true)
+  }
+  const pasteDescriptionImage = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = getPastedImages(event.nativeEvent)
+    if (images.length === 0) return
+    event.preventDefault()
+    if (!user) {
+      setDescriptionImageStatus('Sign in to save pasted images.')
+      return
+    }
+    setIsUploadingDescriptionImage(true)
+    setDescriptionImageStatus('Saving image…')
+    try {
+      const urls = await Promise.all(
+        images.slice(0, 3).map((image) => uploadForgeImage(image, user.id, 'work-items')),
+      )
+      setDescription((current) =>
+        `${current}${current ? '\n\n' : ''}${urls.map((url) => imageMarkdown(url)).join('\n\n')}`,
+      )
+      setDescriptionImageStatus(`${urls.length} image${urls.length === 1 ? '' : 's'} attached.`)
+    } catch (uploadError) {
+      setDescriptionImageStatus(
+        uploadError instanceof Error ? uploadError.message : 'Could not save that image.',
+      )
+    } finally {
+      setIsUploadingDescriptionImage(false)
+    }
   }
   const openItem = (id: string) => {
     const params = new URLSearchParams(window.location.search)
@@ -343,10 +373,15 @@ export function WorkItemsPage() {
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="Add context, acceptance criteria, or a useful note."
+            onPaste={(event) => void pasteDescriptionImage(event)}
+            placeholder="Add context, acceptance criteria, or paste a screenshot."
             rows={3}
             className="mt-4 w-full resize-none rounded-lg bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none ring-1 ring-white/[0.08] placeholder:text-zinc-600 focus:ring-white/30"
           />
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-zinc-600">
+            <ImagePlus className="size-3.5" />
+            {descriptionImageStatus ?? 'Pasted images are saved with the work item.'}
+          </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="text-sm text-zinc-400">
               Type
@@ -385,8 +420,11 @@ export function WorkItemsPage() {
             >
               Cancel
             </button>
-            <button className="rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950">
-              Create item
+            <button
+              disabled={isUploadingDescriptionImage}
+              className="rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isUploadingDescriptionImage ? 'Saving image…' : 'Create item'}
             </button>
           </div>
         </form>

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, MessageSquare, Plus, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type ClipboardEvent, type FormEvent } from 'react'
+import { Check, ImagePlus, MessageSquare, Plus, Trash2, X } from 'lucide-react'
+import { useAuth } from '@/features/auth/auth-provider'
 import { useWorkspace } from '@/features/workspace/workspace-store'
 import { RichText } from '@/components/shared/rich-text'
+import { getPastedImages, imageMarkdown, uploadForgeImage } from '@/lib/image-attachments'
 import type { WorkItem, WorkItemPriority, WorkItemStatus, WorkItemType } from '@/types/workspace'
 import { formatDateTime, idleState } from './work-item-utils'
 
@@ -20,6 +22,7 @@ export function WorkItemDetail({
   onClose: () => void
   onDelete: () => void
 }) {
+  const { user } = useAuth()
   const {
     comments,
     checklistItems,
@@ -32,6 +35,8 @@ export function WorkItemDetail({
     projects,
   } = useWorkspace()
   const [comment, setComment] = useState('')
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageStatus, setImageStatus] = useState<string | null>(null)
   const [checklistItem, setChecklistItem] = useState('')
   useEffect(() => {
     void loadWorkItemDetails(item.id)
@@ -45,15 +50,37 @@ export function WorkItemDetail({
     [checklistItems, item.id],
   )
   const completedCount = itemChecklist.filter((entry) => entry.completed).length
-  const submitComment = (event: React.FormEvent) => {
+  const submitComment = (event: FormEvent) => {
     event.preventDefault()
+    if (uploadingImage) return
     void addComment(item.id, comment)
     setComment('')
+    setImageStatus(null)
   }
-  const submitChecklistItem = (event: React.FormEvent) => {
+  const submitChecklistItem = (event: FormEvent) => {
     event.preventDefault()
     void addChecklistItem(item.id, checklistItem)
     setChecklistItem('')
+  }
+  const pasteCommentImage = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = getPastedImages(event.nativeEvent)
+    if (images.length === 0) return
+    event.preventDefault()
+    if (!user) {
+      setImageStatus('Sign in to save pasted images.')
+      return
+    }
+    setUploadingImage(true)
+    setImageStatus('Saving image…')
+    try {
+      const urls = await Promise.all(images.slice(0, 3).map((image) => uploadForgeImage(image, user.id, 'work-items')))
+      setComment((current) => `${current}${current ? '\n\n' : ''}${urls.map((url) => imageMarkdown(url)).join('\n\n')}`)
+      setImageStatus(`${urls.length} image${urls.length === 1 ? '' : 's'} attached. Add note to save.`)
+    } catch (uploadError) {
+      setImageStatus(uploadError instanceof Error ? uploadError.message : 'Could not save that image.')
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   return (
@@ -186,7 +213,7 @@ export function WorkItemDetail({
                   key={entry.id}
                   className="rounded-xl bg-black/15 px-4 py-3 text-sm leading-6 text-zinc-400"
                 >
-                  {entry.body}
+                  <RichText content={entry.body} />
                   <p className="mt-2 text-[11px] leading-4 text-zinc-600">
                     {formatDateTime(entry.createdAt)}
                   </p>
@@ -198,14 +225,24 @@ export function WorkItemDetail({
             <textarea
               value={comment}
               onChange={(event) => setComment(event.target.value)}
-              placeholder="Leave a note"
+              placeholder="Leave a note — paste an image here to attach it"
+              onPaste={(event) => void pasteCommentImage(event)}
               rows={3}
               className="w-full resize-none rounded-lg bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none ring-1 ring-white/[0.08] placeholder:text-zinc-600 focus:ring-white/30"
             />
-            <button className="mt-2 inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950">
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="inline-flex min-w-0 items-center gap-1.5 text-xs text-zinc-600">
+                <ImagePlus className="size-3.5 shrink-0" />
+                {imageStatus ?? 'Paste a screenshot or image to attach it.'}
+              </p>
+              <button
+                disabled={uploadingImage || !comment.trim()}
+                className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              >
               <Check className="size-4" />
-              Add note
-            </button>
+                {uploadingImage ? 'Saving image…' : 'Add note'}
+              </button>
+            </div>
           </form>
         </div>
       </div>

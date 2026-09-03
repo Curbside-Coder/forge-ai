@@ -31,6 +31,14 @@ export function RichText({ content, className = '' }: { content: string; classNa
             </pre>
           ),
           p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+          img: ({ src, alt }) => (
+            <img
+              src={src}
+              alt={alt ?? 'Attached image'}
+              loading="lazy"
+              className="my-3 max-h-96 max-w-full rounded-xl object-contain ring-1 ring-white/[0.1]"
+            />
+          ),
           ul: ({ children }) => (
             <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>
           ),
